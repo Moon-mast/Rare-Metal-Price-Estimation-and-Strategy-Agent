@@ -4,10 +4,11 @@
  *   打包版经 asarUnpack 加载 agent-proxy.js，开发版 spawn 系统 node；
  * - 代理不可用时仅联网工具受限，弹一次提示。
  */
-const { app, BrowserWindow, Menu, dialog, utilityProcess } = require('electron');
-const { spawn } = require('child_process');
+const { app, BrowserWindow, Menu, dialog, utilityProcess, ipcMain } = require('electron');
+const { spawn, execFile } = require('child_process');
 const path = require('path');
 const http = require('http');
+const net = require('net');
 
 let PORT = 8210;
 let proxyProc = null;
@@ -64,13 +65,59 @@ function createWindow() {
     backgroundColor: '#0f0c29',
     autoHideMenuBar: true,
     show: false,
-    webPreferences: { contextIsolation: true, nodeIntegration: false, spellcheck: false },
+    webPreferences: { contextIsolation: true, nodeIntegration: false, spellcheck: false, preload: path.join(__dirname, 'preload.js') },
   });
   win.once('ready-to-show', () => win.show());
   win.on('closed', () => { win = null; });
 }
 
 const gotLock = app.requestSingleInstanceLock();
+
+/* ---------- 代理诊断（设置面板"诊断代理环境"调用） ---------- */
+function tcpOpen(port) {
+  return new Promise(resolve => {
+    const s = net.connect({ host: '127.0.0.1', port });
+    const done = v => { s.destroy(); resolve(v); };
+    s.setTimeout(700, () => done(false));
+    s.on('connect', () => done(true));
+    s.on('error', () => done(false));
+  });
+}
+function runCmd(cmd, args) {
+  return new Promise(res => execFile(cmd, args, { windowsHide: true }, (e, out) => res(String(out || '').trim())));
+}
+ipcMain.handle('rma-version', () => app.getVersion());
+ipcMain.handle('rma-kill', async (e, pid) => {
+  try { await runCmd('taskkill', ['/F', '/PID', String(pid)]); return true; } catch (err) { return false; }
+});
+ipcMain.handle('rma-diagnose', async () => {
+  const report = { electron: app.getVersion(), packaged: app.isPackaged, ports: [], proxyPort: PORT };
+  try { report.nodeVersion = await runCmd('node', ['-v']); } catch (e) { report.nodeVersion = null; }
+  const pidMap = {};
+  try {
+    const ns = await runCmd('netstat', ['-ano']);
+    for (const line of ns.split('\n')) {
+      const m = line.match(/127\.0\.0\.1:(82\d\d)\s+\S+\s+LISTENING\s+(\d+)/);
+      if (m) pidMap[m[1]] = m[2];
+    }
+  } catch (e) {}
+  for (let p = 8210; p <= 8219; p++) {
+    if (await healthAt(p)) { report.ports.push({ port: p, state: 'proxy' }); continue; }
+    if (await tcpOpen(p)) {
+      const pid = pidMap[String(p)] || null;
+      let name = null;
+      if (pid) {
+        const tl = await runCmd('tasklist', ['/FI', 'PID eq ' + pid, '/FO', 'CSV', '/NH']);
+        name = (tl.split('"')[1]) || null;
+      }
+      report.ports.push({ port: p, state: 'occupied', pid, name });
+    } else {
+      report.ports.push({ port: p, state: 'free' });
+    }
+  }
+  return report;
+});
+
 if (!gotLock) {
   app.quit();
 } else {

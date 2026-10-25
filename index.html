@@ -185,6 +185,14 @@ body{
   background:rgba(0,0,0,.4);color:var(--ink-dim);border-radius:8px;padding:4px 10px;font-size:11px;
   cursor:pointer;font-family:inherit;transition:background .2s,color .2s}
 .codecopy:hover{color:#fff;background:rgba(0,0,0,.6)}
+.diagout{background:rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.12);border-radius:10px;
+  padding:10px 12px;font-size:12px;line-height:1.8;white-space:pre-wrap;word-break:break-word;
+  color:var(--ink);margin:8px 0 0;max-height:260px;overflow:auto}
+.diagout b{color:#ffd166}
+.diagout .dact{display:inline-block;margin:2px 4px 2px 0;padding:4px 10px;border-radius:8px;
+  border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.06);color:var(--ink);
+  font-size:11.5px;cursor:pointer;font-family:inherit}
+.diagout .dact:hover{background:rgba(255,255,255,.12)}
 
 /* ===== 右键菜单 ===== */
 #ctxMenu{position:fixed;z-index:100;min-width:190px;padding:6px;border-radius:14px;box-shadow:0 10px 36px rgba(0,0,0,.4)}
@@ -506,8 +514,10 @@ input[type=range]{width:100%;accent-color:var(--accent)}
     </label>
     <div class="row-between" style="margin-top:6px;gap:10px">
       <button class="ghost" id="btnProxyTest">测试代理连接</button>
+      <button class="ghost" id="btnDiag">诊断代理环境</button>
       <span class="hint" id="proxyStatus" style="margin:0;text-align:right;flex:1"></span>
     </div>
+    <pre id="diagOut" class="diagout" hidden></pre>
     <p class="hint">密钥只保存在你本机的浏览器 localStorage 中，页面不向任何第三方上传。联网工具：智谱 GLM 走服务端内置搜索，
     无需代理；其他提供方需在本目录运行 <b>node agent-proxy.js</b>（端口 8210）并保持上方地址一致。
     若双击打开（file://）遇到跨域限制，也可直接访问代理的静态服务 http://127.0.0.1:8210。</p>
@@ -1900,6 +1910,77 @@ $('btnProxyTest').addEventListener('click', async ()=>{
     const j=await r.json();
     st.textContent='✓ 可用 · 引擎: '+((j.engines||[]).join('/'));
   }catch(e){ st.textContent='✗ 无法连接——请先运行 node agent-proxy.js'; }
+});
+
+/* ===== 代理环境诊断 ===== */
+$('btnDiag').addEventListener('click', async ()=>{
+  const out=$('diagOut'); out.hidden=false;
+  out.textContent='诊断中…（探测 8210-8219 端口）';
+  let rep=null;
+  if(window.rmaDesktop){
+    try{ rep=await window.rmaDesktop.diagnose(); }catch(e){ rep=null; }
+  }
+  if(!rep){
+    // 浏览器降级：仅健康探测
+    const ports=[];
+    for(let p=8210;p<=8219;p++){
+      try{
+        const rr=await fetch('http://127.0.0.1:'+p+'/api/health',{signal:AbortSignal.timeout(800)});
+        if(rr.ok) ports.push({port:p, state:'proxy'});
+      }catch(e){}
+    }
+    rep={ports, browser:true, nodeVersion:null, electron:null, proxyPort:null};
+  }
+  const lines=[];
+  lines.push('应用版本: '+(rep.electron||'(网页版)')+(rep.packaged?'（打包版）':'（开发/网页模式）'));
+  lines.push('Node 环境: '+(rep.nodeVersion?('已安装 '+rep.nodeVersion):(rep.packaged?'打包版无需系统 Node':'未检测到（网页版联网工具需运行代理）')));
+  const proxyPort=rep.ports.find(x=>x.state==='proxy');
+  if(proxyPort){
+    lines.push('');
+    lines.push('✓ 工具代理运行中: http://127.0.0.1:'+proxyPort.port);
+    if(!('http://127.0.0.1:'+proxyPort.port).includes(String(cfg.proxyUrl||'').replace(/\/+$/,''))){
+      lines.push('__FIXPORT__'+proxyPort.port+'__ 设置中的代理地址('+cfg.proxyUrl+')与实际端口不一致');
+    }
+  }else{
+    lines.push('');
+    lines.push('✗ 8210-8219 均未发现工具代理');
+    lines.push('→ 建议: 在应用目录运行 node agent-proxy.js；桌面版重启应用会自动拉起');
+    if(!rep.browser && rep.nodeVersion===null) lines.push('→ 未检测到系统 Node.js，请安装 Node.js 18+');
+    lines.push('→ 若始终失败: 检查防火墙/安全软件是否拦截 127.0.0.1 本地回环连接');
+  }
+  for(const p of rep.ports){
+    if(p.state==='occupied'){
+      lines.push('⚠ 端口 '+p.port+' 被占用: '+(p.name||'未知进程')+(p.pid?(' (PID '+p.pid+')'):''));
+    }
+  }
+  let html=lines.map(l=>{
+    if(l.startsWith('__FIXPORT__')){
+      const port=l.split('__')[2];
+      const rest=l.split('__').slice(3).join('');
+      return esc(rest)+' <button class="dact" data-fixport="'+port+'">改用 '+port+' 端口</button>';
+    }
+    return esc(l);
+  }).join('\n');
+  if(window.rmaDesktop){
+    for(const p of rep.ports){
+      if(p.state==='occupied' && p.pid){
+        html+='<div><button class="dact" data-killpid="'+p.pid+'">结束占用进程 '+(p.name||'')+' (PID '+p.pid+') 并重试</button></div>';
+      }
+    }
+  }else if(!proxyPort){
+    html+='<div style="color:var(--ink-dim)">（网页模式无法读取进程信息；完整诊断请使用 Windows 桌面版）</div>';
+  }
+  out.innerHTML=html;
+  out.querySelectorAll('[data-fixport]').forEach(b=>b.addEventListener('click',()=>{
+    $('fProxy').value='http://127.0.0.1:'+b.dataset.fixport;
+    toast('已改用端口 '+b.dataset.fixport+'，点"保存"生效');
+  }));
+  out.querySelectorAll('[data-killpid]').forEach(b=>b.addEventListener('click', async ()=>{
+    if(!confirm('结束进程 PID '+b.dataset.killpid+'？')) return;
+    await window.rmaDesktop.killPid(b.dataset.killpid);
+    toast('已结束进程，正在重新诊断');
+    $('btnDiag').click();
+  }));
 });
 
 /* ===== 目录选择器 ===== */
