@@ -211,6 +211,20 @@
 
 ---
 
+## 迭代 20 · 2026-10-25 · 修复打包版代理启动 + 强制收敛输出 → Release v1.0.1
+
+| 时间 | 操作 | 结果 | 说明 |
+|---|---|---|---|
+| 15:55 | 诊断用户截图：打包版"工具代理未能启动"弹窗。根因：①utilityProcess 从 asar 内加载不可靠；②8210 被占即永久失败；③此前打包版测试的健康成功实为幸存的开发代理（假阳性） | pass | |
+| 15:57 | 修复：asarUnpack 解出代理脚本；端口池 8210-8219 逐个回退（健康则复用/启动失败则换端口）；界面一律 loadFile（不依赖代理）；代理 EADDRINUSE 自退 | pass | |
+| 15:58 | 修复"光搜索不给内容"：toolsLoop 轮数用尽后强制一次无工具调用（收敛指令：基于已收集信息输出完整回答）；toolsNote 增加搜索纪律（连续搜索≤4 次，足够即作答） | pass | |
+| 16:01 | v1.0.1 重建 + 打包版实测：utilityProcess+asarUnpack 代理自启、health 5 引擎 OK、无错误弹窗 | pass | |
+| 16:05 | Release v1.0.1 发布：exe 106.1MB + zip 147.2MB 上传（PowerShell 需 UTF-8 BOM 教训再次生效）；推送 3ad0c63 | pass | |
+
+**交付链接**：https://github.com/Moon-mast/Rare-Metal-Price-Estimation-and-Strategy-Agent/releases/tag/v1.0.1
+
+---
+
 ## 迭代 1 · 2026-10-24 · 初版构建
 
 | 时间 | 操作 | 结果 | 说明 |
