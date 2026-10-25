@@ -38,11 +38,6 @@
       ],
       "icon": "electron.ico"
     },
-    "portable": {
-      "artifactName": "Rare-Metal-Agent-Windows-Portable-${version}.exe"
-    },
-    "zip": {
-      "artifactName": "Rare-Metal-Agent-Windows-${version}.zip"
-    }
+    "artifactName": "Rare-Metal-Agent-Windows-${version}.${ext}"
   }
 }

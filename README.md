@@ -2,6 +2,14 @@
 
 根据《稀有金属价格预估与策略 Agent · 系统提示词 v1.0》构建的可运行 Agent 应用：单文件网页 + 零依赖本地工具代理，无构建步骤。界面按玻璃拟态规范构建（背景层 → 玻璃层 → 内容层三级深度），包含点赞爆粒子、提交按钮三连变、果冻开关三个微交互。
 
+## 下载安装
+
+| 平台 | 获取方式 |
+|---|---|
+| **Windows** | [Releases](https://github.com/Moon-mast/Rare-Metal-Price-Estimation-and-Strategy-Agent/releases) 下载 `Rare-Metal-Agent-Windows-1.0.0.exe`（免安装便携版，双击即用，自带工具代理）或同名 `.zip` |
+| **Android** | 用 Chrome 打开 [在线版](https://moon-mast.github.io/Rare-Metal-Price-Estimation-and-Strategy-Agent/) → 菜单 → **添加到主屏幕/安装应用**，即得全屏独立 App（PWA）。注意：在线版不含本地工具代理，联网搜索/文件/代码执行需按下方说明在本机运行代理，或直接用 Windows 版 |
+| **源码运行** | 克隆本仓库 → `npm install` → `node agent-proxy.js`（另开终端）→ 浏览器打开 `http://127.0.0.1:8210` |
+
 ## 桌面端（Electron）
 
 除浏览器访问外，应用打包了 Electron 桌面壳（依赖已装在 `node_modules`，无需再安装）：
