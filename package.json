@@ -5,7 +5,7 @@
   },
   "name": "critical-minerals-desk",
   "productName": "Critical Minerals Desk",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "稀有金属价格预估与策略 Agent 桌面端",
   "main": "main.js",
   "scripts": {
