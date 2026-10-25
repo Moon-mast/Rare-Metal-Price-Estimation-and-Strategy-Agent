@@ -195,6 +195,22 @@
 
 ---
 
+## 迭代 19 · 2026-10-25 · GitHub 发布（Windows + Android/PWA）
+
+| 时间 | 操作 | 结果 | 说明 |
+|---|---|---|---|
+| 16:00 | PWA 化：manifest.webmanifest + sw.js（导航 network-first、跨域不缓存）+ icons 192/512 + meta/SW 注册 | pass | |
+| 16:05 | 打包壳适配：封装环境无系统 node，main.js 代理改用 Electron utilityProcess.fork | pass | |
+| 16:15 | electron-builder v26（npmmirror）：修正两轮 schema 错误（根级 zip 键→win.target 对象数组→仍非法→根级 artifactName），产出 portable exe 106.1MB + zip 147.2MB | pass | build_log.txt |
+| 16:25 | 打包版实测：utilityProcess 代理自启、health 5 引擎 OK | pass | |
+| 16:30 | git：init/2 commits + merge 远端脚手架（-X ours）→ push main 成功 | pass | 2c8cefa→d3a3575 |
+| 16:40 | API 发布遇两处网络/环境坑：api.github.com 被 Watt Toolkit(Steam++) 本地 MITM（Node/curl 不认其自签证书）→ 改 PowerShell(Schannel) 完成 release 创建/资产上传/Pages；exe 首传被正在运行的 portable 进程锁定 → 杀进程重传 | pass | |
+| 16:45 | 验证：Release v1.0.0 含 exe(106.1MB)+zip(147.2MB)；Pages status=built 且页面可访问 | pass | |
+
+**交付链接**：Release https://github.com/Moon-mast/Rare-Metal-Price-Estimation-and-Strategy-Agent/releases/tag/v1.0.0 · 在线版 https://moon-mast.github.io/Rare-Metal-Price-Estimation-and-Strategy-Agent/
+
+---
+
 ## 迭代 1 · 2026-10-24 · 初版构建
 
 | 时间 | 操作 | 结果 | 说明 |

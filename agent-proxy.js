@@ -342,6 +342,11 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
+server.on('error', e => {
+  console.error('[proxy] server error:', e.message);
+  process.exit(1);
+});
+
 server.listen(PORT, '127.0.0.1', () => {
   console.log('工具代理已启动: http://127.0.0.1:' + PORT);
   console.log('  搜索 /api/search?q=…   网页 /api/fetch?url=…   健康 /api/health');

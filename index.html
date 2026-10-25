@@ -796,6 +796,7 @@ function toolsNote(){
     +'\n【上下文压缩说明】长对话中较早的轮次会被折叠为"会话回顾"摘要、较早已消费的工具回合会被折叠为"过程回顾"；需要早前的精确数字/路径/工具输出时，调用 recall_history 用关键词取回原文，不要凭摘要编造精确数据。'
     +(pluginTools.length?('另有已启用插件提供的工具（current_time 等），工具详情见 function 定义，调用结果以插件返回为准。'):'')
     +'需要"写一个程序"类请求时：先用 write_file 保存代码文件，再用 run_code 运行验证，把运行结果和代码一并汇报。'
+    +'\n【工具纪律】web_search 连续调用不得超过 4 次（中英文各 1–2 次）；信息足够后必须立即停止调用工具并输出完整的分析内容——禁止只搜索不回答，禁止无视已获取的结果而以"信息不足"敷衍。'
     +'获取到数据后仍按系统提示词第 6 节输出 A–F 结构并标注来源与时间；工具失败或结果不足时按第 2 节与 6.2 节处理。';
 }
 
@@ -1543,7 +1544,20 @@ async function toolsLoop(messages, onTrace, signal){
       work.push({role:'tool', tool_call_id:tc.id, content:String(out).slice(0,20000)});
     }
   }
-  return '（已达本次工具调用轮数上限 '+maxRounds+' 轮，已停止。基于以上信息继续回答，或在设置中调高"工具调用轮数上限"后让我接着做。）';
+  // 轮数用尽：强制收敛，保证一定有内容输出
+  try{
+    const c=await finalAnswerWithoutTools(work, signal);
+    if(c.trim()) return c;
+  }catch(e){}
+  return '（已达本次工具调用轮数上限 '+maxRounds+' 轮，且模型未能输出汇总。请调高"工具调用轮数上限"后重试，或将任务拆分为多步。）';
+}
+
+/* 工具循环结束后的强制收敛：不带工具再调一次，要求基于已收集信息输出完整回答 */
+async function finalAnswerWithoutTools(work, signal){
+  const merged=work.concat([{role:'user', content:'【收敛指令】工具调用阶段已结束。请立即停止调用任何工具，直接基于上文已收集的全部信息（含各工具结果与过程回顾）输出完整回答；信息不足的部分如实说明，不要编造。'}]);
+  const res=await apiRaw(merged,{stream:false,tools:false,signal});
+  const j=await res.json();
+  return (j.choices&&j.choices[0]&&j.choices[0].message&&j.choices[0].message.content)||'';
 }
 
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));

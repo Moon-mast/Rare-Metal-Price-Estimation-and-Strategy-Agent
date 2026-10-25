@@ -1,41 +1,58 @@
 /* Critical Minerals Desk 桌面端（Electron 壳）
- * 启动时自动拉起工具代理 agent-proxy.js（8210），退出时一并结束；
- * 代理已在外部运行则直接复用；代理启动失败时退化为直接加载 index.html。
+ * - 界面一律 loadFile 加载，不依赖工具代理；
+ * - 工具代理（搜索/读网页/文件/代码执行）自动启动：端口池 8210-8219 回退，
+ *   打包版经 asarUnpack 加载 agent-proxy.js，开发版 spawn 系统 node；
+ * - 代理不可用时仅联网工具受限，弹一次提示。
  */
 const { app, BrowserWindow, Menu, dialog, utilityProcess } = require('electron');
 const { spawn } = require('child_process');
 const path = require('path');
 const http = require('http');
 
-const PORT = 8210;
-const BASE = 'http://127.0.0.1:' + PORT + '/';
+let PORT = 8210;
 let proxyProc = null;
-let win = null;
 
-function health() {
+function proxyScriptPath() {
+  let p = path.join(__dirname, 'agent-proxy.js');
+  if (p.includes('app.asar')) p = p.replace('app.asar', 'app.asar.unpacked');
+  return p;
+}
+function healthAt(port) {
   return new Promise(resolve => {
-    const req = http.get(BASE + 'api/health', r => { r.resume(); resolve(r.statusCode === 200); });
+    const req = http.get('http://127.0.0.1:' + port + '/api/health', r => { r.resume(); resolve(r.statusCode === 200); });
     req.on('error', () => resolve(false));
-    req.setTimeout(800, () => { req.destroy(); resolve(false); });
+    req.setTimeout(700, () => { req.destroy(); resolve(false); });
   });
 }
+const waitHealth = async (port, tries) => { for (let i = 0; i < tries; i++) { if (await healthAt(port)) return true; } return false; };
 
-async function ensureProxy() {
-  for (let i = 0; i < 5; i++) { if (await health()) return 'reuse'; }
-  // 打包版没有系统 node，用 Electron 自带的 utilityProcess 运行代理；开发版直接 spawn node
+function startProxyAt(port) {
+  const p = proxyScriptPath();
   if (app.isPackaged) {
-    proxyProc = utilityProcess.fork(path.join(__dirname, 'agent-proxy.js'), [], {
-      env: { ...process.env, PORT: String(PORT) },
-      serviceName: 'tool-proxy',
+    proxyProc = utilityProcess.fork(p, [], {
+      env: { ...process.env, PORT: String(port) },
+      serviceName: 'tool-proxy-' + port,
     });
     proxyProc.on('exit', () => { proxyProc = null; });
   } else {
-    proxyProc = spawn('node', [path.join(__dirname, 'agent-proxy.js')], {
-      env: { ...process.env, PORT: String(PORT) },
+    proxyProc = spawn('node', [p], {
+      env: { ...process.env, PORT: String(port) },
       stdio: 'ignore', windowsHide: true,
     });
   }
-  for (let i = 0; i < 25; i++) { if (await health()) return 'spawned'; }
+}
+
+async function ensureProxy() {
+  const ports = [8210, 8211, 8212, 8213, 8214, 8215, 8216, 8217, 8218, 8219];
+  for (const p of ports) {
+    if (await healthAt(p)) { PORT = p; return 'reuse'; }
+  }
+  for (const p of ports) {
+    startProxyAt(p);
+    if (await waitHealth(p, 12)) { PORT = p; return 'spawned'; }
+    try { if (proxyProc) proxyProc.kill(); } catch (e) {}
+    proxyProc = null;
+  }
   return 'failed';
 }
 
@@ -68,19 +85,18 @@ if (!gotLock) {
 
     const status = await ensureProxy();
     if (status === 'failed') {
-      await win.loadFile('index.html');
       dialog.showMessageBox(win, {
         type: 'warning',
-        message: '工具代理未能启动（联网搜索/读网页不可用）。\n其余功能正常；如需工具，请确认已安装 Node.js 并可运行 agent-proxy.js。',
+        message: '工具代理未能启动（联网搜索/读网页/文件/代码执行不可用）。\n界面、对话与计算器不受影响。请确认端口 8210-8219 未被占用，或手动运行 agent-proxy.js。',
         buttons: ['知道了'],
       });
-    } else {
-      try { await win.loadURL(BASE); }
-      catch (e) { await win.loadFile('index.html'); }
     }
+    try { await win.loadFile('index.html'); }
+    catch (e) { dialog.showMessageBox(win, { type: 'error', message: '页面加载失败：' + e.message, buttons: ['知道了'] }); }
   });
 
   app.on('window-all-closed', () => {
     if (proxyProc) { try { proxyProc.kill(); } catch (e) {} }
     app.quit();
-  });}
+  });
+}
