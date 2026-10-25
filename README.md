@@ -6,7 +6,7 @@
 
 | 平台 | 获取方式 |
 |---|---|
-| **Windows** | [Releases](https://github.com/Moon-mast/Rare-Metal-Price-Estimation-and-Strategy-Agent/releases) 下载 `Rare-Metal-Agent-Windows-1.0.0.exe`（免安装便携版，双击即用，自带工具代理）或同名 `.zip` |
+| **Windows** | [Releases](https://github.com/Moon-mast/Rare-Metal-Price-Estimation-and-Strategy-Agent/releases) 下载最新的 `Rare-Metal-Agent-Windows-*.exe`（免安装便携版，双击即用，自带工具代理）或同名 `.zip` |
 | **Android** | 用 Chrome 打开 [在线版](https://moon-mast.github.io/Rare-Metal-Price-Estimation-and-Strategy-Agent/) → 菜单 → **添加到主屏幕/安装应用**，即得全屏独立 App（PWA）。注意：在线版不含本地工具代理，联网搜索/文件/代码执行需按下方说明在本机运行代理，或直接用 Windows 版 |
 | **源码运行** | 克隆本仓库 → `npm install` → `node agent-proxy.js`（另开终端）→ 浏览器打开 `http://127.0.0.1:8210` |
 
@@ -15,9 +15,10 @@
 除浏览器访问外，应用打包了 Electron 桌面壳（依赖已装在 `node_modules`，无需再安装）：
 
 - **启动**：双击 `启动桌面端.bat`，或双击桌面快捷方式「稀有金属策略Agent」（图标为 `图标.png` 转制的 `electron.ico`）。
-- **自动拉起工具代理**：启动时自动运行 `agent-proxy.js`（8210），退出窗口时一并结束；若代理已在外部运行则直接复用；代理启动失败会弹提示并退化为直接加载页面（联网工具不可用，其余正常）。
+- **自动拉起工具代理**：启动时自动运行 `agent-proxy.js`——优先复用已在运行的代理，否则从 8210 起逐个端口尝试（8210-8219，被其他程序占用的端口自动跳过），就绪后把**实际端口同步给界面**（设置里的代理地址会自动对齐，不用手改）。退出窗口时一并结束。
+- **代理没起来怎么办**：⚙ 设置 → **诊断代理环境**，可看到端口占用情况、Node 版本、代理日志尾部，并点“重新启动工具代理”原地重试。日志文件在 `%APPDATA%\Critical Minerals Desk\agent-proxy.log`。桌面版用 Electron 内置 Node 运行代理，**不依赖系统安装 Node.js**。
 - **独立窗口**：无地址栏、无菜单栏，单实例（重复启动会唤起已有窗口），任务栏/窗口图标用 `图标.png`。
-- **注意**：桌面端（8210 来源）与浏览器版（8080/file://）的 localStorage 相互独立，API Key 与对话记录各自保存。
+- **注意**：桌面端（8210-8219）与浏览器版（8080/file://）的 localStorage 相互独立，API Key 与对话记录各自保存。
 - 想改窗口标题、默认尺寸：编辑 `main.js` 中 `BrowserWindow` 配置。
 
 ## 快速开始
@@ -53,7 +54,7 @@
 
 ## 联网工具与编程能力是怎么工作的
 
-打开输入框左侧「联网工具」开关后，应用以标准 function-calling 循环驱动模型（轮数上限可在设置中调，默认 25、最高 50），每一步工具调用都会以 🔍/🧮/📄 痕迹条实时显示在回复气泡内，页面顶部的**灵动岛**胶囊同步显示"当前动作 · 第 N/M 轮 · 计时"，点击可展开最近 4 步轨迹。
+打开输入框左侧「联网工具」开关后，应用以标准 function-calling 循环驱动模型（轮数上限可在设置中调，默认 25、最高 120），每一步工具调用都会以 🔍/🧮/📄 痕迹条实时显示在回复气泡内，页面顶部的**灵动岛**胶囊同步显示"当前动作 · 第 N/M 轮 · 计时"，点击可展开最近 4 步轨迹。
 
 | 工具 | 实现 | 说明 |
 |---|---|---|

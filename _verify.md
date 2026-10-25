@@ -37,3 +37,22 @@
 | 10 | 回归：演示模式/玻璃拟态/微交互 | ✅ | 清空数据后重新加载：演示角标、首访 toast、流式、痕迹条、果冻开关默认值均正常 |
 
 **结果：10/10 passed（其中 2 项为代码审查级）。** 修复 3 处：计算器千分位逗号破坏多参数函数；搜索引擎相关度与引擎链；fetch 跳转跟随 + GBK 解码。
+
+---
+
+# VERIFY 迭代 23 · 2026-10-25 17:30 · 桌面端工具代理自启修复
+
+| # | 检查项 | 结果 | 证据 |
+|---|---|---|---|
+| 1 | 根因可复现 | ✅ | 原 `waitHealth` 的 12 次探测 13ms 内全部 ECONNREFUSED；同一端口 2s 后 `/api/health` 正常（探针脚本日志） |
+| 2 | 开发版启动自动拉起代理 | ✅ | 启动 ~0.25s 后 `127.0.0.1:8210/api/health` 返回 5 个引擎；窗口标题/页面正常 |
+| 3 | 界面拿到代理实际端口 | ✅ | CDP 读取：`rmaDesktop.proxyInfo()` → `{port:8210,status:"ok"}`；`cfg.proxyUrl` 一致；页面内 fetch health OK |
+| 4 | 8210 被占时回退 + 端口同步 | ✅ | 先占用 8210（非代理）再启动：日志“端口 8210 已被其他程序占用，跳过”，代理起于 8211，界面 `cfg.proxyUrl` 自动改为 `http://127.0.0.1:8211` 且直连健康 OK |
+| 5 | 诊断面板与一键重试 | ✅ | `#diagOut` 显示 `✓ 工具代理运行中: http://127.0.0.1:8211`、`⚠ 端口 8210 被占用: node.exe (PID …)` 与“重新启动工具代理”按钮；杀掉代理后 `retryProxy()` → `{status:"spawned",port:8211}` |
+| 6 | 日志与失败提示 | ✅ | `%APPDATA%\Critical Minerals Desk\agent-proxy.log` 记录跳过/就绪/退出/错误；失败弹窗附带日志路径 |
+| 7 | 打包版（utilityProcess）自启 | ✅ | win-unpacked v1.0.4：日志 `工具代理就绪: 127.0.0.1:8210（utilityProcess）`，health OK |
+| 8 | 打包版 run_code | ✅ | `POST /api/exec` → `{ok:true, stdout:"run_code OK from v24.22.0\n"}`（Electron 内置 Node） |
+| 9 | 页面加载不被代理阻塞 | ✅ | 先 `loadFile` 再后台 `ensureProxy`；界面不用等代理，代理 0.2-0.6s 内就绪 |
+| 10 | 语法与回归 | ✅ | `node --check main.js`、`node --check agent-proxy.js`、内联脚本提取后 `node --check` 全部通过 |
+
+**结果：10/10 passed。**

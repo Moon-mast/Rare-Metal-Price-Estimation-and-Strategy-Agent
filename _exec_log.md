@@ -247,6 +247,26 @@
 
 ---
 
+## 迭代 23 · 2026-10-25 · 修复桌面端"工具代理未能启动"（用户截图：诊断显示 8210-8219 均无代理）
+
+| 时间 | 操作 | 结果 | 说明 |
+|---|---|---|---|
+| 17:16 | 复现：以 `启动桌面端.bat` 的方式启动，窗口正常但 8210-8219 无监听、健康接口全失败 | pass | 与用户两张截图表现一致，稳定复现 |
+| 17:17 | 定位根因：`main.js` 的 `waitHealth(port, 12)` 是**无间隔**的 12 次探测，实测 13ms 内全部 ECONNREFUSED；而 node 冷启动到监听需 ~0.2-0.6s → 每次都在进程起来前就被 kill，10 个端口全判失败。此前"打包版自启成功"的结论是复用了残留代理的假阳性 | pass | 探针：try0-11 共 13ms；2s 后同一端口健康 OK |
+| 17:19 | 修复①（根因）：改为「截止时间 8s + 150ms 间隔轮询」，进程提前退出时立即换端口；启动前先 TCP 探测跳过被占用端口，避免每个占用端口白等 8s | pass | main.js `waitHealth` / `doEnsureProxy` |
+| 17:20 | 修复②：代理实际端口经 IPC 同步给界面（`rma-proxy-info` / `rma-proxy-status`），设置里的本机代理地址自动对齐；并在 `did-finish-load` 补发一次状态，修掉"事件早于页面加载被丢弃"的次生竞态 | pass | 8210 被占→代理起在 8211→界面自动改 8211 且直连健康 OK |
+| 17:21 | 修复③：代理 stdout/stderr 落盘 `%APPDATA%\Critical Minerals Desk\agent-proxy.log`；诊断面板显示日志尾部，新增"重新启动工具代理"按钮（`rma-proxy-retry`）；失败弹窗附带日志路径 | pass | 诊断面板同时正确标出 8210 occupied |
+| 17:22 | 修复④：打包版 `run_code` 子进程补 `ELECTRON_RUN_AS_NODE=1`（代理跑在 Electron 内置 Node 里时 `process.execPath` 是 Electron 本体，否则会启动一个 Electron 实例） | pass | 打包版实测 stdout：`run_code OK from v24.22.0` |
+| 17:23 | 开发版实测：启动 ~0.25s 代理就绪 8210；界面桥接、端口、页面直连 `/api/health` 全部正常 | pass | CDP 读取 `proxyInfo` + 页面 fetch |
+| 17:24 | 开发版回退实测：占用 8210 后启动→自动使用 8211 且界面自动改 8211；手动杀掉代理→点"重新启动工具代理"成功重启 | pass | 日志：`端口 8210 已被其他程序占用，跳过` |
+| 17:26 | 版本升至 1.0.4；`electron-builder --dir` 重建（本机 HTTPS 被本地加速工具 MITM：Node 需 `--use-system-ca`，打包依赖走 npmmirror 镜像） | pass | 首次失败 `unable to verify the first certificate` |
+| 17:28 | 打包版实测：utilityProcess 代理 0.2s 就绪、health OK、端口自动对齐、run_code 正常 | pass | 日志：`工具代理就绪: 127.0.0.1:8210（utilityProcess）` |
+| 17:31 | 构建便携版 exe + zip（v1.0.4） | pass | build_log.txt |
+
+**根因一句话**：不是端口被占、也不是防火墙，而是**健康探测没有间隔**——12 次探测在 13ms 内跑完，Node 还没开始监听就被判失败并杀掉。
+
+---
+
 ## 迭代 1 · 2026-10-24 · 初版构建
 
 | 时间 | 操作 | 结果 | 说明 |

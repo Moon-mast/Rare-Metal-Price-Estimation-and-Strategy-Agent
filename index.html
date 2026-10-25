@@ -519,7 +519,8 @@ input[type=range]{width:100%;accent-color:var(--accent)}
     </div>
     <pre id="diagOut" class="diagout" hidden></pre>
     <p class="hint">密钥只保存在你本机的浏览器 localStorage 中，页面不向任何第三方上传。联网工具：智谱 GLM 走服务端内置搜索，
-    无需代理；其他提供方需在本目录运行 <b>node agent-proxy.js</b>（端口 8210）并保持上方地址一致。
+    无需代理；其他提供方需运行 <b>agent-proxy.js</b>。Windows 桌面版会自动启动代理，并把实际端口（8210-8219 自动回退）
+    同步到上方地址；网页版可手动运行 <b>node agent-proxy.js</b>。
     若双击打开（file://）遇到跨域限制，也可直接访问代理的静态服务 http://127.0.0.1:8210。</p>
     <div class="btnrow">
       <button class="primary" id="btnSave">保存</button>
@@ -1913,6 +1914,21 @@ $('btnProxyTest').addEventListener('click', async ()=>{
   }catch(e){ st.textContent='✗ 无法连接——请先运行 node agent-proxy.js'; }
 });
 
+/* 桌面版代理实际端口同步：本机默认地址与代理实际端口不一致时自动对齐，
+   避免 8210 被占用、代理回退到 8211 后界面仍连 8210 导致工具全失败 */
+function adoptProxyPort(port){
+  if(!port) return false;
+  const cur=String(cfg.proxyUrl||'').trim();
+  const isLocal=!cur || /^https?:\/\/127\.0\.0\.1:82\d\d\/?$/.test(cur);
+  if(isLocal && cur!=='http://127.0.0.1:'+port){
+    cfg.proxyUrl='http://127.0.0.1:'+port; saveCfg();
+    if($('fProxy')) $('fProxy').value=cfg.proxyUrl;
+    toast('工具代理已就绪（端口 '+port+'）');
+    return true;
+  }
+  return false;
+}
+
 /* ===== 代理环境诊断 ===== */
 $('btnDiag').addEventListener('click', async ()=>{
   const out=$('diagOut'); out.hidden=false;
@@ -1944,10 +1960,19 @@ $('btnDiag').addEventListener('click', async ()=>{
     }
   }else{
     lines.push('');
-    lines.push('✗ 8210-8219 均未发现工具代理');
-    lines.push('→ 建议: 在应用目录运行 node agent-proxy.js；桌面版重启应用会自动拉起');
-    if(!rep.browser && rep.nodeVersion===null) lines.push('→ 未检测到系统 Node.js，请安装 Node.js 18+');
+    lines.push('✗ 8210-8219 均未发现工具代理'+(rep.proxyStatus==='starting'?'（后台仍在启动，可稍后重试诊断）':''));
+    if(rep.browser){
+      lines.push('→ 建议: 在应用目录运行 node agent-proxy.js（网页版无自动启动能力）');
+    }else{
+      lines.push('→ 建议: 点下方“重新启动工具代理”重试；仍失败再看本日志中的 [proxy:err] 行');
+    }
+    if(!rep.browser && rep.nodeVersion===null) lines.push('→ 未检测到系统 Node.js（桌面版会改用 Electron 内置 Node）');
     lines.push('→ 若始终失败: 检查防火墙/安全软件是否拦截 127.0.0.1 本地回环连接');
+    if(rep.logTail){
+      lines.push('');
+      lines.push('—— 代理日志（'+(rep.logPath||'')+'）——');
+      lines.push(rep.logTail);
+    }
   }
   for(const p of rep.ports){
     if(p.state==='occupied'){
@@ -1963,6 +1988,7 @@ $('btnDiag').addEventListener('click', async ()=>{
     return esc(l);
   }).join('\n');
   if(window.rmaDesktop){
+    html+='<div><button class="dact" data-retryproxy>重新启动工具代理</button></div>';
     for(const p of rep.ports){
       if(p.state==='occupied' && p.pid){
         html+='<div><button class="dact" data-killpid="'+p.pid+'">结束占用进程 '+(p.name||'')+' (PID '+p.pid+') 并重试</button></div>';
@@ -1980,6 +2006,15 @@ $('btnDiag').addEventListener('click', async ()=>{
     if(!confirm('结束进程 PID '+b.dataset.killpid+'？')) return;
     await window.rmaDesktop.killPid(b.dataset.killpid);
     toast('已结束进程，正在重新诊断');
+    $('btnDiag').click();
+  }));
+  out.querySelectorAll('[data-retryproxy]').forEach(b=>b.addEventListener('click', async ()=>{
+    b.disabled=true; b.textContent='正在启动…';
+    try{
+      const r=await window.rmaDesktop.retryProxy();
+      if(r && r.status!=='failed'){ adoptProxyPort(r.port); toast('代理已就绪（端口 '+r.port+'）'); }
+      else toast('代理仍未启动，见下方日志');
+    }catch(e){ toast('重试失败：'+String(e.message||e).slice(0,60)); }
     $('btnDiag').click();
   }));
 });
@@ -2097,6 +2132,13 @@ if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
 document.documentElement.classList.toggle('no-blur', !!cfg.legacyRender);
 activatePlugins();
 renderPlugins();
+/* 桌面版：同步工具代理实际端口（启动查询 + 后台就绪事件两条路径） */
+if(window.rmaDesktop && window.rmaDesktop.proxyInfo){
+  window.rmaDesktop.proxyInfo().then(r=>{ if(r && r.status==='ok') adoptProxyPort(r.port); }).catch(()=>{});
+}
+if(window.rmaDesktop && window.rmaDesktop.onProxyStatus){
+  window.rmaDesktop.onProxyStatus(r=>{ if(r && r.status==='ok') adoptProxyPort(r.port); });
+}
 $('promptPre').textContent=SYSTEM_PROMPT+'\n\n'+runtimeNote();
 renderAll();
 updateBadge();

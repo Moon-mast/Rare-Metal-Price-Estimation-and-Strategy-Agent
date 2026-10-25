@@ -283,7 +283,9 @@ const server = http.createServer(async (req, res) => {
       await fsp.writeFile(tmp, code, 'utf8');
       const t0 = Date.now();
       const out = await new Promise(resolve => {
-        const cp = spawn(process.execPath, [tmp], { windowsHide: true });
+        // 打包版里本代理跑在 Electron 内置 Node 中，process.execPath 是 Electron 可执行文件，
+        // 必须带 ELECTRON_RUN_AS_NODE=1 才按 Node 运行脚本；系统 node 下该变量无副作用。
+        const cp = spawn(process.execPath, [tmp], { windowsHide: true, env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' } });
         let so = '', se = '', done = false;
         const timer = setTimeout(() => {
           if (!done) { done = true; try { cp.kill('SIGKILL'); } catch (e) {}
