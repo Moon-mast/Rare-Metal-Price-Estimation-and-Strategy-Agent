@@ -3,3 +3,4 @@ release/
 *.log
 build_log.txt
 .DS_Store
+_cred.txt
