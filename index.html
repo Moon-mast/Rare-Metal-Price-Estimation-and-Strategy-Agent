@@ -1,0 +1,2014 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0f0c29">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<title>Critical Minerals Desk · 稀有金属价格预估与策略 Agent</title>
+<style>
+/* ===== Step 2 · Depth Tokens ===== */
+:root{
+  --bg-grad: linear-gradient(135deg,#0f0c29 0%,#302b63 50%,#24243e 100%);
+  --g-base: hsla(0 0% 100% / 0.08);   --b-base: 12px;
+  --g-raised: hsla(0 0% 100% / 0.14); --b-raised: 20px;
+  --g-overlay: hsla(0 0% 100% / 0.22);--b-overlay: 28px;
+  --border: rgba(255,255,255,0.22);
+  --radius: 20px;
+  --shadow: 0 8px 32px rgba(0,0,0,0.18);
+  --ink:#f2f3f8; --ink-dim:rgba(242,243,248,.62);
+  --accent:#7c8cff; --green:#34d399; --red:#ff5d73;
+  color-scheme: dark;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+html{background:#0f0c29}
+body{
+  margin:0; color:var(--ink);
+  font-family:"Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  overflow:hidden;
+}
+/* 背景渐变用固定图层元素承载：backdrop-filter 取样不会渗出画布外的白色 */
+.bg{position:fixed; inset:0; z-index:-2; background:var(--bg-grad); pointer-events:none}
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,.18);border-radius:8px}
+::-webkit-scrollbar-track{background:transparent}
+
+/* ===== Step 3/4 · 玻璃面 + 光学细节 ===== */
+.glass{
+  position:relative; isolation:isolate;
+  background:var(--g-base);
+  backdrop-filter:blur(var(--b-base)); -webkit-backdrop-filter:blur(var(--b-base));
+  border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow);
+}
+.glass.raised{background:var(--g-raised); backdrop-filter:blur(var(--b-raised)); -webkit-backdrop-filter:blur(var(--b-raised))}
+.glass.overlay{background:var(--g-overlay); backdrop-filter:blur(var(--b-overlay)); -webkit-backdrop-filter:blur(var(--b-overlay))}
+.glass::before{
+  content:""; position:absolute; inset:0; z-index:-1; border-radius:inherit;
+  background:linear-gradient(180deg, rgba(255,255,255,0.18), transparent 40%);
+  pointer-events:none;
+}
+.glass::after{
+  content:""; position:absolute; inset:0; z-index:-1; border-radius:inherit; padding:1px;
+  background:linear-gradient(135deg, rgba(255,255,255,0.35), transparent 55%);
+  -webkit-mask:linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite:xor;
+  mask:linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite:exclude;
+  pointer-events:none;
+}
+@supports not ((backdrop-filter: blur(4px)) or (-webkit-backdrop-filter: blur(4px))){
+  .glass{background:rgba(20,20,30,0.85)}
+}
+.hoverable{transition:background .24s, backdrop-filter .24s, -webkit-backdrop-filter .24s, transform .24s, box-shadow .24s}
+.hoverable:hover{
+  background:var(--g-overlay); backdrop-filter:blur(var(--b-overlay)); -webkit-backdrop-filter:blur(var(--b-overlay));
+  transform:translateY(-2px);
+}
+
+/* ===== 顶栏 ===== */
+#topbar{
+  position:fixed; top:12px; left:16px; right:16px; z-index:50;
+  height:56px; display:flex; align-items:center; gap:14px; padding:0 18px;
+}
+.brand{display:flex; align-items:center; gap:12px; min-width:0}
+.logo{width:30px;height:30px;border-radius:10px;flex:none;
+  background:linear-gradient(135deg,#7c8cff,#4dd0e1);display:flex;align-items:center;justify-content:center;font-size:15px}
+.brand h1{font-size:15px;margin:0;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.brand small{display:block;color:var(--ink-dim);font-size:11px;font-weight:400}
+#topbar .spacer{flex:1}
+.badge{font-size:11px;padding:4px 10px;border-radius:999px;border:1px solid var(--border);
+  background:rgba(255,209,102,.15);color:#ffd166;white-space:nowrap}
+.badge.live{background:rgba(52,211,153,.14);color:var(--green)}
+.icon-btn{
+  background:transparent;border:none;color:var(--ink-dim);cursor:pointer;
+  padding:7px 10px;border-radius:12px;font-size:13px;font-family:inherit;white-space:nowrap;
+  transition:background .24s,color .24s;
+}
+.icon-btn:hover{color:#fff;background:rgba(255,255,255,.10)}
+
+/* ===== 聊天区 ===== */
+#chatScroll{position:absolute; inset:0; overflow-y:auto; padding:86px 16px 158px}
+.col-wrap{max-width:880px;margin:0 auto}
+.msg{display:flex; gap:12px; margin-bottom:18px}
+.msg.user{flex-direction:row-reverse}
+.avatar{width:34px;height:34px;border-radius:12px;flex:none;display:flex;align-items:center;justify-content:center;
+  font-size:12px;font-weight:600;color:#fff}
+.msg.assistant .avatar{background:linear-gradient(135deg,#7c8cff,#4dd0e1)}
+.msg.user .avatar{background:rgba(255,255,255,.16);border:1px solid var(--border)}
+.msg .col{max-width:calc(100% - 46px);display:flex;flex-direction:column}
+.msg.user .col{align-items:flex-end}
+.meta{font-size:11px;color:var(--ink-dim);margin:0 4px 6px}
+.bubble{padding:16px 18px; max-width:100%; overflow-wrap:break-word}
+.msg.user .bubble{border-radius:20px 20px 6px 20px;
+  background:linear-gradient(135deg, rgba(124,140,255,.28), rgba(124,140,255,.14));
+  backdrop-filter:blur(var(--b-raised)); -webkit-backdrop-filter:blur(var(--b-raised));}
+.msg.assistant .bubble{border-radius:20px 20px 20px 6px}
+.bubble .md > :first-child{margin-top:0}
+.bubble .md > :last-child{margin-bottom:0}
+.md h2,.md h3,.md h4{margin:14px 0 8px; line-height:1.4}
+.md h2{font-size:17px}.md h3{font-size:15.5px}.md h4{font-size:14.5px;color:#c9d4ff}
+.md p{margin:8px 0; line-height:1.75; font-size:14px}
+.md li{margin:4px 0; line-height:1.7; font-size:14px}
+.md ul,.md ol{padding-left:22px;margin:8px 0}
+.md blockquote{margin:10px 0; padding:6px 14px; border-left:3px solid var(--accent);
+  background:rgba(124,140,255,.08); border-radius:0 12px 12px 0; color:var(--ink-dim); font-size:13.5px}
+.md table{border-collapse:collapse; width:100%; margin:10px 0; font-size:13px}
+.md th,.md td{border:1px solid rgba(255,255,255,.18); padding:7px 10px; text-align:left; line-height:1.5}
+.md th{background:rgba(255,255,255,.08)}
+.md tr:nth-child(even) td{background:rgba(255,255,255,.03)}
+.md code{background:rgba(255,255,255,.10); padding:2px 6px; border-radius:6px; font-size:12.5px}
+.md pre{background:rgba(0,0,0,.30); border:1px solid rgba(255,255,255,.12); border-radius:12px;
+  padding:12px 14px; overflow:auto}
+.md pre code{background:none;padding:0}
+.md hr{border:none;border-top:1px solid rgba(255,255,255,.14);margin:14px 0}
+.md a{color:#9fb0ff}
+.tool-trace{margin:2px 0 10px;padding:8px 12px;border-radius:12px;background:rgba(255,255,255,.06);
+  border:1px dashed rgba(255,255,255,.22);font-size:12px;color:var(--ink-dim);line-height:1.7}
+.tool-trace div{margin:2px 0;word-break:break-all}
+.notice code{background:rgba(255,255,255,.12);padding:1px 6px;border-radius:6px;font-size:11.5px}
+.ghost{border:1px solid var(--border);background:transparent;color:var(--ink-dim);border-radius:12px;
+  padding:9px 14px;font-size:12.5px;cursor:pointer;font-family:inherit;align-self:center}
+.ghost:hover{color:#fff;background:rgba(255,255,255,.08)}
+
+/* ===== 灵动岛 ===== */
+#dynIsland{position:fixed;top:8px;left:50%;transform:translateX(-50%);z-index:80;
+  min-width:130px;max-width:min(600px,86vw);padding:7px 16px;border-radius:22px;cursor:pointer;
+  background:rgba(10,10,22,.88);border:1px solid rgba(255,255,255,.18);
+  box-shadow:0 6px 24px rgba(0,0,0,.35);user-select:none;
+  transition:min-width .3s ease, box-shadow .3s, background .3s}
+#dynIsland .isl-main{display:flex;align-items:center;gap:8px;font-size:12px;white-space:nowrap;overflow:hidden;justify-content:center}
+#dynIsland .isl-dot{width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.4);flex:none;transition:background .3s}
+#dynIsland .isl-time{color:var(--ink-dim);font-size:11px;flex:none}
+#dynIsland.work .isl-dot{background:#ffd166;animation:islandPulse 1.1s ease-in-out infinite}
+#dynIsland.work{min-width:260px;box-shadow:0 6px 28px rgba(255,209,102,.12)}
+#dynIsland.done .isl-dot{background:var(--green)}
+#dynIsland .isl-detail{display:none;margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,.14);
+  font-size:11px;color:var(--ink-dim);line-height:1.7;max-height:130px;overflow-y:auto}
+#dynIsland.expand .isl-detail{display:block}
+#dynIsland .isl-detail div{word-break:break-all}
+@keyframes islandPulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.5);opacity:.55}}
+
+/* ===== 权限确认弹窗 ===== */
+#permWrap{position:fixed;inset:0;z-index:90;display:flex;align-items:center;justify-content:center}
+#permWrap[hidden]{display:none}
+#permScrim{position:absolute;inset:0;background:rgba(8,8,18,.55)}
+#permModal{position:relative;width:min(560px,92vw);max-height:80vh;display:flex;flex-direction:column;padding:18px 20px}
+#permModal h3{margin:0 0 10px;font-size:15px}
+#permBody{font-size:13px;line-height:1.7;overflow-y:auto;color:var(--ink)}
+#permBody .kv{color:var(--ink-dim);font-size:12px;margin:8px 0 4px}
+#permBody pre{background:rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:10px 12px;
+  font-size:12px;max-height:220px;overflow:auto;white-space:pre-wrap;word-break:break-word;margin:0 0 6px}
+
+/* ===== 目录选择器 ===== */
+#dirWrap{position:fixed;inset:0;z-index:90;display:flex;align-items:center;justify-content:center}
+#dirWrap[hidden]{display:none}
+#dirModal{position:relative;width:min(540px,94vw);max-height:82vh;display:flex;flex-direction:column;padding-bottom:14px}
+#dirModal .dir-list{flex:1;overflow-y:auto;padding:6px 18px;min-height:200px;max-height:340px}
+#dirModal .dir-item{padding:9px 12px;border-radius:10px;font-size:13px;cursor:pointer;word-break:break-all;
+  transition:background .15s}
+#dirModal .dir-item:hover{background:rgba(255,255,255,.10)}
+#dirModal .dir-path{margin:0 18px 6px}
+
+/* ===== 插件列表 ===== */
+.plugin-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.08)}
+.plugin-row .ver{color:var(--ink-dim);font-size:11px}
+#pluginCode{width:100%;height:74px;background:rgba(255,255,255,.08);border:1px solid var(--border);
+  border-radius:10px;color:var(--ink);font-size:12px;padding:8px;resize:vertical;outline:none;font-family:Consolas,monospace}
+
+/* ===== 代码块复制按钮 ===== */
+.codebox{position:relative;margin:10px 0}
+.codebox pre{margin:0}
+.codecopy{position:absolute;top:8px;right:10px;z-index:2;border:1px solid rgba(255,255,255,.25);
+  background:rgba(0,0,0,.4);color:var(--ink-dim);border-radius:8px;padding:4px 10px;font-size:11px;
+  cursor:pointer;font-family:inherit;transition:background .2s,color .2s}
+.codecopy:hover{color:#fff;background:rgba(0,0,0,.6)}
+
+/* ===== 右键菜单 ===== */
+#ctxMenu{position:fixed;z-index:100;min-width:190px;padding:6px;border-radius:14px;box-shadow:0 10px 36px rgba(0,0,0,.4)}
+#ctxMenu .ctx-item{padding:9px 14px;border-radius:10px;font-size:13px;cursor:pointer;white-space:nowrap;
+  transition:background .15s}
+#ctxMenu .ctx-item:hover{background:rgba(255,255,255,.10)}
+#ctxMenu .ctx-sep{height:1px;background:rgba(255,255,255,.12);margin:5px 8px}
+.bubble.err{border-color:rgba(255,93,115,.5)}
+.bubble.err .md p{font-size:13.5px}
+.caret{display:inline-block;width:8px;height:1em;background:rgba(255,255,255,.75);
+  margin-left:3px;vertical-align:-2px;animation:blink 1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+.msg-actions{display:flex;align-items:center;gap:2px;margin:6px 4px 0}
+
+/* 点赞爆粒子 */
+.like{display:inline-flex;align-items:center;gap:6px;background:transparent;border:none;cursor:pointer;
+  color:var(--ink-dim);font-size:12px;padding:5px 8px;border-radius:10px;font-family:inherit;
+  transition:background .24s,color .24s}
+.like:hover{background:rgba(255,255,255,.08)}
+.heartbox{position:relative;display:inline-flex;align-items:center;justify-content:center}
+.heart{font-size:15px;color:rgba(255,255,255,.55);transition:color .2s;display:inline-block}
+.like.done{color:var(--red)}
+.like.done .heart{color:var(--red)}
+.heart.pop{animation:likepop .6s cubic-bezier(0.34,1.56,0.64,1)}
+@keyframes likepop{
+  0%{transform:scale(1)} 25%{transform:scale(0.8)}
+  70%{transform:scale(1.18)} 100%{transform:scale(1)}
+}
+.p{position:absolute;left:50%;top:50%;width:6px;height:6px;border-radius:50%;pointer-events:none;
+  animation:fly .4s ease-out forwards}
+@keyframes fly{
+  from{transform:translate(-50%,-50%) scale(1);opacity:1}
+  to{transform:translate(calc(-50% + var(--tx)),calc(-50% + var(--ty))) scale(.15);opacity:0}
+}
+.cnt{display:inline-block;min-width:1em;text-align:center}
+.cnt.roll{animation:rollup .42s ease}
+@keyframes rollup{
+  0%{transform:translateY(0);opacity:1}
+  45%{transform:translateY(-110%);opacity:0}
+  55%{transform:translateY(110%);opacity:0}
+  100%{transform:translateY(0);opacity:1}
+}
+
+/* ===== 欢迎页 ===== */
+#welcome{margin-bottom:22px}
+.hero{padding:26px 28px}
+.hero h2{margin:0 0 6px;font-size:20px}
+.hero .tagline{color:var(--ink-dim);font-size:13.5px;margin:0 0 14px;line-height:1.7}
+.hero .dims{display:flex;flex-wrap:wrap;gap:8px}
+.dims span{font-size:12px;padding:5px 12px;border-radius:999px;border:1px solid var(--border);background:rgba(255,255,255,.06)}
+.notice{margin-top:14px;padding:12px 16px;border-radius:14px;border:1px solid rgba(255,209,102,.35);
+  background:rgba(255,209,102,.08);font-size:12.5px;line-height:1.7;color:#ffe4a8}
+.chips-title{font-size:12px;color:var(--ink-dim);margin:18px 4px 10px}
+.chips{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px}
+.chip{padding:12px 16px;border-radius:14px;text-align:left;font-size:13px;line-height:1.5;cursor:pointer;
+  color:var(--ink);font-family:inherit}
+
+/* ===== 输入区 ===== */
+#composerWrap{position:fixed;left:16px;right:16px;bottom:12px;z-index:40;pointer-events:none}
+#composer{max-width:880px;margin:0 auto;pointer-events:auto;padding:12px 14px;
+  display:flex;align-items:flex-end;gap:10px}
+#ta{flex:1;background:transparent;border:none;outline:none;resize:none;color:var(--ink);
+  font-family:inherit;font-size:14px;line-height:1.6;padding:8px 4px;max-height:160px}
+#ta::placeholder{color:rgba(242,243,248,.4)}
+.composer-note{max-width:880px;margin:6px auto 0;text-align:center;font-size:11px;color:rgba(242,243,248,.4)}
+.btn-stop{border:1px solid rgba(255,255,255,.25);background:transparent;color:var(--ink-dim);
+  border-radius:14px;padding:0 14px;height:40px;font-size:12.5px;cursor:pointer;font-family:inherit}
+.btn-stop:hover{color:#fff;background:rgba(255,255,255,.08)}
+/* 提交按钮三连变 */
+.sendbtn{
+  position:relative;height:42px;width:96px;flex:none;border:none;border-radius:21px;cursor:pointer;
+  background:linear-gradient(135deg,#7c8cff,#5b6cff);color:#fff;font-size:13.5px;font-weight:600;font-family:inherit;
+  transition:width .3s ease-in-out, border-radius .3s ease-in-out, background .3s ease-in-out;
+  overflow:hidden;
+}
+.sendbtn .lb{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:6px;transition:opacity .15s}
+.sendbtn .spin,.sendbtn .check{position:absolute;inset:0;display:none;align-items:center;justify-content:center}
+.spinner{width:18px;height:18px;border-radius:50%;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;
+  animation:rot 1s linear infinite}
+@keyframes rot{to{transform:rotate(360deg)}}
+.sendbtn .checkmark{font-size:20px;font-weight:700}
+.sendbtn.loading{width:42px;border-radius:50%;cursor:default;pointer-events:none}
+.sendbtn.loading .lb{opacity:0}
+.sendbtn.loading .spin{display:flex}
+.sendbtn.success{width:42px;border-radius:50%;pointer-events:none;background:var(--green)}
+.sendbtn.success .lb,.sendbtn.success .spin{display:none;opacity:0}
+.sendbtn.success .check{display:flex;animation:pop .2s cubic-bezier(0.34,1.56,0.64,1)}
+@keyframes pop{from{transform:scale(.4);opacity:0}to{transform:scale(1);opacity:1}}
+
+/* ===== 果冻开关 ===== */
+.jelly{display:inline-flex;align-items:center;gap:8px;cursor:pointer;user-select:none;flex:none;outline:none}
+.jelly:focus-visible{outline:2px solid rgba(124,140,255,.7);outline-offset:3px;border-radius:16px}
+.jelly .track{position:relative;width:52px;height:28px;border-radius:14px;flex:none;
+  background:rgba(255,255,255,.16);border:1px solid var(--border);transition:background .35s ease}
+.jelly .knob{position:absolute;top:2px;left:2px;width:22px;height:22px;border-radius:50%;background:#fff;
+  box-shadow:0 2px 6px rgba(0,0,0,.35);transition:none}
+.jelly.on .track{background:linear-gradient(135deg,#34d399,#2bb673)}
+.jelly.dragging .knob{transition:none}
+.jelly.settle .knob{transition:transform .35s cubic-bezier(0.34,1.8,0.64,1)}
+.jlabel{font-size:12px;color:var(--ink-dim);white-space:nowrap}
+
+/* ===== 抽屉 ===== */
+#scrim{position:fixed;inset:0;background:rgba(8,8,18,.45);z-index:55;opacity:0;transition:opacity .3s;pointer-events:none}
+#scrim.show{opacity:1;pointer-events:auto}
+.drawer{
+  position:fixed;top:84px;bottom:96px;right:16px;z-index:60;width:min(420px,94vw);
+  transform:translateX(calc(100% + 40px));transition:transform .3s ease;display:flex;flex-direction:column;
+}
+.drawer.open{transform:translateX(0)}
+.drawer-head{display:flex;align-items:center;justify-content:space-between;padding:16px 18px 10px}
+.drawer-head h3{margin:0;font-size:15px}
+.drawer-body{flex:1;overflow-y:auto;padding:4px 18px 18px}
+.fld{display:block;font-size:12px;color:var(--ink-dim);margin:14px 0 6px}
+.fld input[type=text],.fld input[type=password],.fld input[type=number],.fld select{
+  width:100%;margin-top:6px;background:rgba(255,255,255,.08);border:1px solid var(--border);
+  border-radius:12px;padding:10px 12px;color:var(--ink);font-size:13px;font-family:inherit;outline:none;
+  transition:border-color .2s, background .2s}
+.fld input:focus,.fld select:focus{border-color:var(--accent);background:rgba(255,255,255,.12)}
+/* 原生下拉弹层：显式深底浅字，避免浅色文字落在白色弹层上看不清 */
+.fld select{color-scheme:dark}
+.fld select option{background:#24243e;color:var(--ink)}
+.fld select option:checked{background:#302b63;color:#fff}
+.keyrow{display:flex;gap:8px;align-items:center}
+.keyrow input{flex:1}
+.row-between{display:flex;align-items:center;justify-content:space-between;margin:16px 0;font-size:13px;color:var(--ink)}
+input[type=range]{width:100%;accent-color:var(--accent)}
+.hint{font-size:11.5px;color:var(--ink-dim);line-height:1.7;margin:14px 0}
+.btnrow{display:flex;gap:10px;margin-top:18px}
+.primary{flex:1;border:none;border-radius:12px;padding:11px 0;background:linear-gradient(135deg,#7c8cff,#5b6cff);
+  color:#fff;font-size:13.5px;font-weight:600;cursor:pointer;font-family:inherit}
+.primary:hover{filter:brightness(1.1)}
+.danger{border:1px solid rgba(255,93,115,.4);background:transparent;color:#ff8f9f;border-radius:12px;
+  padding:11px 16px;font-size:13px;cursor:pointer;font-family:inherit}
+.danger:hover{background:rgba(255,93,115,.1)}
+#promptPre{white-space:pre-wrap;word-break:break-word;font-size:12px;line-height:1.8;color:var(--ink);
+  font-family:"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;margin:0}
+.ver{font-size:11px;color:var(--ink-dim);margin-top:12px}
+
+/* Toast */
+#toast{position:fixed;left:50%;bottom:170px;transform:translateX(-50%) translateY(8px);z-index:70;
+  padding:10px 18px;border-radius:14px;font-size:13px;opacity:0;transition:opacity .25s, transform .25s;pointer-events:none}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+.no-blur .glass, .no-blur .glass.raised, .no-blur .glass.overlay,
+.no-blur .hoverable:hover{
+  backdrop-filter:none !important; -webkit-backdrop-filter:none !important;
+  background:rgba(28,26,48,.94);
+}
+.no-blur .msg.user .bubble{background:rgba(64,68,128,.94)}
+.no-blur .glass::after{display:none}
+.no-blur .hoverable:hover{background:rgba(48,44,84,.96)}
+#toast.no-blur-toast{background:rgba(28,26,48,.94);backdrop-filter:none;-webkit-backdrop-filter:none}
+
+@media (max-width:720px){
+  .brand small{display:none}
+  .icon-btn .txt{display:none}
+  #topbar{gap:8px;padding:0 12px}
+  .badge{display:none}
+}
+</style>
+</head>
+<body>
+
+<div class="bg"></div>
+
+<header id="topbar" class="glass overlay">
+  <div class="brand">
+    <div class="logo">⛏</div>
+    <h1>Critical Minerals Desk<small>稀有金属价格预估与策略 Agent · v1.0</small></h1>
+  </div>
+  <div class="spacer"></div>
+  <span class="badge" id="modeBadge">演示模式</span>
+  <button class="icon-btn" id="btnNew">⟳ <span class="txt">新对话</span></button>
+  <button class="icon-btn" id="btnPrompt">📜 <span class="txt">系统提示词</span></button>
+  <button class="icon-btn" id="btnExport">⇩ <span class="txt">导出</span></button>
+  <button class="icon-btn" id="btnSettings">⚙ <span class="txt">设置</span></button>
+</header>
+
+<div id="dynIsland" title="点击展开/收起最近工具轨迹">
+  <div class="isl-main"><span class="isl-dot"></span><span id="islText">待命</span><span class="isl-time" id="islTime"></span></div>
+  <div class="isl-detail" id="islDetail"></div>
+</div>
+
+<main id="chatScroll">
+  <div class="col-wrap">
+    <section id="welcome">
+      <div class="hero glass raised">
+        <h2>稀有金属价格预估与策略 Agent</h2>
+        <p class="tagline">面向稀有金属与关键矿产，在供给高度集中、政策冲击频繁、价格传导非线性（"火箭—羽毛"式）的市场约束下，
+        生成<b>可追溯、可证伪、可执行</b>的价格情景与买卖策略框架。不输出单点价格，只输出情景、区间、概率与证伪条件。</p>
+        <div class="dims">
+          <span>市场状态识别</span><span>供给集中度 HHI</span><span>库存分位</span>
+          <span>期限结构 / 内外价差</span><span>三情景 + 概率</span><span>仓位量化规则</span><span>证伪条件</span>
+        </div>
+        <div class="notice">⚠ 实时信息获取：开启输入框左侧「联网工具」后，模型可自动<b>联网搜索</b>（多引擎回退）、<b>读取网页正文</b>并精确<b>计算</b>——
+        智谱 GLM 内置服务端搜索开箱即用；其他提供方需先在本地运行 <code>node agent-proxy.js</code>（见 README）。关闭工具时请把最新数据贴进对话，
+        缺失维度会被显式标注并下调置信度；信息不足时 Agent 会输出"不足以形成策略建议"及最小数据清单。</div>
+      </div>
+      <p class="chips-title">试试这些开场问题</p>
+      <div class="chips">
+        <button class="chip glass hoverable" data-q="分析锑（antimony）在出口管制背景下的 3 个月价格情景，并给出采购时机评估。">
+          锑：出口管制下的 3 个月价格情景与采购时机
+        </button>
+        <button class="chip glass hoverable" data-q="当前镓、锗的出口管制若进一步加码，我的下游采购敞口应如何审计与对冲？">
+          镓/锗：管制加码情景下的风险敞口审计
+        </button>
+        <button class="chip glass hoverable" data-q="稀土当前处于哪个市场状态（政策冲击 / 周期性 / 流动性驱动）？是否适合建立趋势头寸？">
+          稀土：市场状态识别与趋势头寸适配性
+        </button>
+        <button class="chip glass hoverable" data-q="锂价当前适合用什么方法论预测？请给出三情景框架与关键证伪条件。">
+          锂：预测方法论选择与三情景框架
+        </button>
+      </div>
+    </section>
+    <div id="messages"></div>
+  </div>
+</main>
+
+<div id="composerWrap">
+  <div id="composer" class="glass overlay">
+    <div class="jelly" id="jellyTools" role="switch" aria-checked="false" tabindex="0" title="联网搜索 / 读取网页 / 精确计算">
+      <div class="track"><div class="knob"></div></div><span class="jlabel">联网工具</span>
+    </div>
+    <div class="jelly" id="jellyThink" role="switch" aria-checked="false" tabindex="0" title="思考模式（部分模型支持）">
+      <div class="track"><div class="knob"></div></div><span class="jlabel">深度思考</span>
+    </div>
+    <button class="icon-btn" id="btnPaste" title="粘贴剪贴板内容到输入框">📋</button>
+    <textarea id="ta" rows="1" placeholder="输入金属品种与分析需求，如：分析锑未来 3 个月价格情景与采购策略…（Enter 发送，Shift+Enter 换行）"></textarea>
+    <button class="btn-stop" id="btnStop" hidden>■ 停止</button>
+    <button class="sendbtn" id="btnSend">
+      <span class="lb">发送 ↗</span>
+      <span class="spin"><span class="spinner"></span></span>
+      <span class="check"><span class="checkmark">✓</span></span>
+    </button>
+  </div>
+  <p class="composer-note">以下内容为基于公开信息的分析框架输出，不构成投资建议；实际决策需结合用户自身的风险承受能力、资金约束与合规要求。</p>
+</div>
+
+<div id="scrim"></div>
+
+<aside id="drawerSettings" class="drawer glass overlay">
+  <div class="drawer-head"><h3>设置</h3><button class="icon-btn" id="btnCloseSettings">✕</button></div>
+  <div class="drawer-body">
+    <label class="fld">接口提供方（OpenAI 兼容 /chat/completions 协议）
+      <select id="fProvider">
+        <option value="zhipu">智谱 GLM（bigmodel.cn）</option>
+        <option value="deepseek">DeepSeek</option>
+        <option value="qwen">阿里通义千问（百炼）</option>
+        <option value="siliconflow">硅基流动 SiliconFlow</option>
+        <option value="doubao">字节豆包（火山方舟）</option>
+        <option value="moonshot">Kimi（Moonshot）</option>
+        <option value="hunyuan">腾讯混元</option>
+        <option value="qianfan">百度千帆（文心）</option>
+        <option value="spark">讯飞星火</option>
+        <option value="yi">零一万物 Yi</option>
+        <option value="step">阶跃星辰 Step</option>
+        <option value="openai">OpenAI</option>
+        <option value="openrouter">OpenRouter（聚合）</option>
+        <option value="groq">Groq</option>
+        <option value="custom">自定义（含 Ollama 本地）</option>
+      </select>
+    </label>
+    <p class="hint" id="provHint" style="margin:4px 0 0"></p>
+    <label class="fld">Base URL
+      <input type="text" id="fBaseUrl" spellcheck="false">
+    </label>
+    <label class="fld">API Key
+      <span class="keyrow">
+        <input type="password" id="fKey" placeholder="仅保存在本浏览器 localStorage" spellcheck="false" autocomplete="off">
+        <button class="icon-btn" id="btnEye" title="显示/隐藏">👁</button>
+      </span>
+    </label>
+    <label class="fld">模型
+      <input type="text" id="fModel" spellcheck="false">
+    </label>
+    <div class="fld">Temperature（<span id="tempVal">0.6</span>）
+      <input type="range" id="fTemp" min="0" max="1" step="0.1" value="0.6">
+    </div>
+    <label class="fld">工具调用轮数上限（3–120；编写程序、多步查证类任务建议 25+）
+      <input type="number" id="fRounds" min="3" max="120" step="1" value="25">
+    </label>
+    <label class="fld">上下文预算（token，约 2000–200000；超出后旧轮次自动折叠为"会话回顾"，原文可用 recall_history 检索）
+      <input type="number" id="fBudget" min="2000" max="200000" step="500" value="12000">
+    </label>
+    <label class="fld">工具权限模式
+      <select id="fPerm">
+        <option value="confirm">变更前确认（写文件/运行代码前弹窗审批）</option>
+        <option value="auto">自主模式（工作区内自动执行，无命令行）</option>
+        <option value="full">完全访问（额外开放 shell 命令，风险自负）</option>
+      </select>
+    </label>
+    <label class="fld">工作区目录（相对代理目录或绝对路径；文件读写/程序运行均限于此目录）
+      <span class="keyrow">
+        <input type="text" id="fWorkspace" spellcheck="false">
+        <button class="ghost" id="btnPickDir" style="flex:none">选择…</button>
+      </span>
+    </label>
+    <div class="fld" style="margin-top:16px">插件（导入 JS 文件扩展新工具）
+      <span class="keyrow">
+        <button class="ghost" id="btnPluginFile" style="flex:none">导入 .js 文件</button>
+        <button class="ghost" id="btnPluginSample" style="flex:none">导入示例插件</button>
+      </span>
+      <input type="file" id="pluginFile" accept=".js,.txt,text/javascript" multiple hidden>
+      <textarea id="pluginCode" placeholder="或在此粘贴插件代码（调用 registerPlugin({name, version, tools:[…]})），点「从代码导入」…" spellcheck="false"></textarea>
+      <button class="ghost" id="btnPluginPaste" style="margin-top:6px">从代码导入</button>
+    </div>
+    <div id="pluginList"></div>
+    <div class="row-between"><span>流式输出</span>
+      <div class="jelly" id="jellyStream" role="switch"><div class="track"><div class="knob"></div></div></div>
+    </div>
+    <div class="row-between"><span>演示模式（不调用 API，播放内置样例）</span>
+      <div class="jelly" id="jellyDemo" role="switch"><div class="track"><div class="knob"></div></div></div>
+    </div>
+    <div class="row-between"><span>兼容渲染（玻璃发白 / 闪烁时开启，关闭模糊效果）</span>
+      <div class="jelly" id="jellyCompat" role="switch"><div class="track"><div class="knob"></div></div></div>
+    </div>
+    <label class="fld">工具代理 URL（非智谱提供方联网搜索/读网页经此转发）
+      <input type="text" id="fProxy" spellcheck="false">
+    </label>
+    <div class="row-between" style="margin-top:6px;gap:10px">
+      <button class="ghost" id="btnProxyTest">测试代理连接</button>
+      <span class="hint" id="proxyStatus" style="margin:0;text-align:right;flex:1"></span>
+    </div>
+    <p class="hint">密钥只保存在你本机的浏览器 localStorage 中，页面不向任何第三方上传。联网工具：智谱 GLM 走服务端内置搜索，
+    无需代理；其他提供方需在本目录运行 <b>node agent-proxy.js</b>（端口 8210）并保持上方地址一致。
+    若双击打开（file://）遇到跨域限制，也可直接访问代理的静态服务 http://127.0.0.1:8210。</p>
+    <div class="btnrow">
+      <button class="primary" id="btnSave">保存</button>
+      <button class="danger" id="btnWipe">清空本地数据</button>
+    </div>
+  </div>
+</aside>
+
+<aside id="drawerPrompt" class="drawer glass overlay">
+  <div class="drawer-head"><h3>系统提示词（逐字嵌入）</h3><button class="icon-btn" id="btnClosePrompt">✕</button></div>
+  <div class="drawer-body"><pre id="promptPre"></pre>
+  <p class="ver">提示词版本 v1.0 · 另附加两行"运行环境补充"（当前日期 + 无实时数据说明），见下方末尾。</p></div>
+</aside>
+
+<div id="permWrap" hidden>
+  <div id="permScrim"></div>
+  <div id="permModal" class="glass overlay">
+    <h3>⚠ 工具请求确认</h3>
+    <div id="permBody"></div>
+    <div class="btnrow">
+      <button class="ghost" id="permDeny">拒绝</button>
+      <button class="ghost" id="permAlways">本对话总是允许</button>
+      <button class="primary" id="permOnce">仅本次允许</button>
+    </div>
+  </div>
+</div>
+
+<div id="dirWrap" hidden>
+  <div id="permScrim" data-close-dir="1"></div>
+  <div id="dirModal" class="glass overlay">
+    <div class="drawer-head"><h3>选择工作区目录</h3><button class="icon-btn" id="dirClose">✕</button></div>
+    <div class="fld dir-path"><input type="text" id="dirPath" readonly title="当前目录"></div>
+    <div class="dir-list" id="dirList"></div>
+    <div class="btnrow" style="padding:0 18px">
+      <button class="ghost" id="dirUp">← 上级</button>
+      <button class="primary" id="dirChoose">选择当前目录</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="glass overlay"></div>
+<div id="ctxMenu" class="glass overlay" hidden></div>
+
+<script>
+/* ================= 系统提示词（逐字嵌入 v1.0） ================= */
+const SYSTEM_PROMPT = `# 稀有金属价格预估与策略 Agent · 系统提示词
+
+> **文档类型**：系统级提示词 / Agent 配置文档
+> **版本**：v1.0
+> **适用场景**：稀有金属/关键矿产的方向性分析、采购时机评估、交易策略框架生成、风险敞口审计。
+> **不适用场景**：高频做市、无流动性品种的实盘执行、替代合规与适当性审查。
+
+---
+
+## 一、角色定义
+
+你是 **Critical Minerals Desk Agent**，一个专注于稀有金属与关键矿产的分析与策略生成系统。你的任务不是"预测一个精确价格"，而是在**供给高度集中、政策冲击频繁、价格传导非线性**的市场约束下，生成**可追溯、可证伪、可执行**的价格情景与买卖策略建议。
+
+你服务于具有商品交易或采购背景的专业用户。默认输出语言为中文，保留必要的英文术语与指标缩写。
+
+### 核心原则（按优先级排序）
+
+1. **先识别市场状态，再选择方法论。**
+   不存在"永远最优"的模型或策略；同一金属在不同 regime 下的主导逻辑可能完全不同。
+
+2. **政策与供给冲击是第一类信息。**
+   稀有金属的价格变动中，出口管制、配额、断供事件的解释力通常高于传统供需平衡表。
+
+3. **价格传导是不对称的。**
+   短缺冲击倾向于"火箭—羽毛"式调整：恶化时价格快速抬升，缓解时价格回落极其缓慢。策略必须内置这一偏度。
+
+4. **没有证伪条件的策略建议不输出。**
+   每一个方向性判断都必须附带"什么情况下这个判断被推翻"。
+
+5. **不输出精确的单点价格目标。**
+   输出情景、区间与概率，而非伪精确的 forecast。
+
+---
+
+## 二、数据层：输入维度
+
+Agent 在分析任一金属前，应系统性地采集以下六类数据。缺失维度必须在输出中显式标注，并降低对应结论的置信度。
+
+### 2.1 供给结构
+
+- 全球矿山产量与精炼产量的**国别集中度**，优先计算 HHI（赫芬达尔—赫希曼指数）。供给集中度是价格对短缺冲击敏感度的核心放大器：HHI 越高，同等短缺冲击下的累计价格涨幅越大。
+- 主要生产国的**出口政策状态**：是否处于管制、配额、许可证制度或事实性禁运之下，以及政策处于"预期—落地—执行—豁免/延期"的哪个阶段。
+- 矿山**成本曲线**：边际成本位置、品位趋势、新建项目的资本开支与投产周期。
+
+### 2.2 需求侧
+
+- 终端用途拆分（EV/电池、储能、半导体、军工、传统工业等）。EV 与电池相关矿产对供给冲击的价格敏感度最高。
+- 需求的价格弹性与替代弹性。稀有金属的**低替代性**是价格极端化的结构性条件：没有一对一替代品时，供给缺口不会被需求破坏有效吸收。
+- 若可获得，AI 算力、国防开支等结构性需求驱动量的中短期增速。
+
+### 2.3 库存与可见缓冲
+
+- 交易所库存（LME、SHFE 等）及其**历史分位数**，而非绝对量。
+- 生产商/消费者/贸易商环节的隐形库存估计（若可获得）。
+- 战略储备的规模与释放/收储规则。
+
+### 2.4 价格结构与市场微观结构
+
+- 现货与期货的**期限结构**：backwardation 深度与持续性，是物理短缺的最直接价格信号之一。
+- **内外价差**：在存在出口管制的品种上，境内外价格可能完全脱钩。境外溢价水平本身即是供给安全溢价的直接度量。
+- 流动性质量：买卖价差、持仓集中度、是否容易发生跳空。稀有金属小品种的流动性稀薄本身就是一个独立风险因子。
+
+### 2.5 政策与地缘政治事件流
+
+- 出口管制清单的变化（覆盖税目数量、是否延伸至含本国成分的境外制成品）。
+- 主要生产国的国内政治事件、选举、劳工争端、能源短缺。
+- 贸易争端与关税行动中直接涉及目标金属的部分。
+
+### 2.6 宏观与金融条件
+
+- 美元指数与实际利率方向（对以美元计价的金属估值产生系统性压力或支撑）。
+- 全球制造业 PMI 与工业产出趋势。
+- 风险偏好指标（信用利差、商品曲线整体斜率）。
+
+---
+
+## 三、预测引擎：方法论选择规则
+
+**禁止**在未声明市场状态的前提下直接套用单一模型。按以下顺序进行判断：
+
+### 3.1 市场状态识别
+
+将当前环境归入以下三类之一，并说明依据：
+
+- **政策/供给冲击主导状态**：近期存在重大出口管制变化、断供、配额调整，或供给集中度极高且政策不确定性上升。此状态下，**基本面事件驱动逻辑优先于统计模型**，价格预测应以情景分析为主。
+- **周期性供需状态**：无重大政策冲击，价格主要由库存周期、边际成本与需求趋势驱动。此状态下可侧重计量/机器学习预测。
+- **流动性/情绪驱动状态**：价格偏离基本面可见范围，主要由资金流、仓位集中或风险偏好切换驱动。此状态下，**均值回归与波动率框架权重上升**，基本面预测置信度下调。
+
+### 3.2 品种适配的预测方法
+
+不同稀有金属的可预测性存在显著异质性，且不存在跨品种统一的"最佳模型"。须按品种选择主导方法，并声明其局限：
+
+| 品种类型 | 优先方法 | 关键约束 |
+|---|---|---|
+| 锂 | XGBoost 类梯度提升方法在样本外通常优于随机游走 | 预测增益是 regime-dependent 的；在结构性断点附近可能失效 |
+| 钴 | ARIMA 类线性时间序列方法历史上表现较优 | 刚果（金）政策冲击可能使历史自相关结构失效 |
+| 镍 / 稀土 | TFT（Temporal Fusion Transformer）等深度序列模型在部分研究中优于随机游走 | 需要足够的序列长度与特征质量；小品种数据稀薄时不可靠 |
+| 钨、锑、镓、锗、钇等小品种 | **情景分析为主，统计模型为辅** | 市场规模小、政策冲击主导，历史价格分布不具代表性 |
+
+**波动率建模**：对流动性允许的品种，优先使用 GARCH 族或 SV 模型刻画条件波动率，并将波动率预测直接输入仓位模块。需注意 ETM 波动率模式在品种间高度异质，不能按"稀土""电池金属"等大类统一假设。
+
+### 3.3 价格传导的不对称性修正
+
+所有基于历史关系的预测，必须叠加**短缺冲击不对称调整**：若当前处于供给条件恶化方向，向上调整幅度应显著大于供给条件同等程度缓解时的向下调整幅度。这一偏度在供给集中度高的品种上应进一步放大。
+
+### 3.4 预测输出的强制格式
+
+不得输出单点价格。输出**三情景 + 概率权重**：
+
+- **短缺深化情景**：触发条件、价格区间、隐含概率。
+- **基准延续情景**：假设当前政策与库存趋势线性外推。
+- **供给缓解/需求破坏情景**：触发条件（如替代技术突破、配额放松、需求侧主动去库）、价格区间。
+
+每个情景必须注明**预测期限**（如 1 个月 / 3 个月 / 6 个月），并说明该期限内主导逻辑是什么。
+
+---
+
+## 四、策略引擎：从预测到买卖决策
+
+策略生成遵循"**方向 — 工具 — 时机 — 规模**"四层结构，每一层都必须有明确规则，不允许模糊表述。
+
+### 4.1 方向层：方向性偏好的确定
+
+方向判断不直接来自价格预测的"涨/跌"，而来自以下信号的**加权收敛**：
+
+- **供给安全溢价方向**：内外价差是否在扩大？出口管制是否在加码或松动？
+- **库存轨迹**：交易所库存是否处于历史低位且仍在去化？
+- **期限结构**：backwardation 是否在加深？
+- **动量/趋势**：中期趋势是否与基本面方向一致，还是出现背离？
+
+当上述信号指向不一致时，输出**"方向中性 / 等待确认"**，而非强行给出方向。不一致本身就是一种可操作的信息。
+
+### 4.2 工具层：表达方式的选取
+
+根据市场状态和流动性条件选择策略载体：
+
+- **趋势/动量表达**：适用于政策冲击已落地、价格开始沿供给缺口方向运动、且流动性允许的趋势状态。使用趋势跟踪或突破框架。
+- **均值回归表达**：适用于无重大政策断点的周期性状态，且价格已偏离可见基本面锚（边际成本、历史库存—价格关系）达到统计极端。需结合库存周期与基差结构确认，不能仅凭价格偏离入场。
+- **波动率表达**：当隐含波动率显著偏离已实现波动率、或事件前后波动率期限结构扭曲时，可考虑通过期权结构表达，而非单纯方向性头寸。高波动品种上卖出近月波动率需有 gamma 保护，不宜裸卖。
+- **跨品种/跨市表达**：存在内外价差结构性割裂的品种，可考虑跨境或跨品种相对价值表达，但必须评估政策导致价差**永久性重定价**（而非均值回归）的风险。
+
+### 4.3 时机层：入场条件的显式化
+
+入场必须由**可观测的触发条件**定义，而非"觉得便宜/觉得要涨"。示例性触发规则（按策略类型）：
+
+- **趋势入场**：价格突破既定波动率调整后的通道，且供给端事件未出现反向证据。
+- **均值回归入场**：价格触及基于波动率或库存—价格模型定义的极端带，同时库存未处于"短缺深化"方向。
+- **事件驱动入场**：政策公告已发布且市场尚未完成定价，同时流动性条件允许建仓。
+
+**关键约束**：在政策事件窗口（公告前与公告后初期），流动性可能瞬时恶化，跳空风险显著上升。事件驱动仓位必须使用比常规更小的规模，并预设跳空情景下的损失上限。
+
+### 4.4 规模层：仓位规模的确定规则
+
+仓位规模**不得**由主观信心决定。必须使用以下至少一种量化规则，并在输出中展示计算过程：
+
+- **波动率目标法**：给定组合层面可接受的年化波动率贡献，根据该品种的条件波动率预测反推名义敞口。
+- **固定比例风险法**：单笔交易的最大可接受损失占风险资本的比例（建议区间 1–3%，流动性越差、事件风险越高，取区间下沿），结合入场价与止损价反推仓位。
+- **ATR 基准法**：以平均真实波幅为单位确定仓位，而非以名义价值确定。稀有金属小品种的 ATR 可能极大，名义金额法会系统性高估安全仓位。
+
+对于流动性稀薄或历史最大单日波动超过 ±15% 的品种，杠杆上限应显著低于主流商品，并预设"隔夜跳空可导致止损失效"的尾部情景。
+
+---
+
+## 五、风控层：强制嵌入的约束
+
+以下规则**不可被策略逻辑覆盖**，必须在输出中逐项确认：
+
+1. **硬止损前置**：在入场逻辑中即定义止损/证伪价位，而非"入场后再看"。止损条件必须与入场逻辑同源：如果入场理由是"短缺持续"，则"库存转为累积"或"政策明确松动"应触发退出，而非仅仅依赖价格止损。
+2. **单品种/单事件敞口上限**：同一供给冲击叙事下关联的多个品种（如稀土族内多个元素）应视为**一个风险簇**合并计算敞口，不得因"分散在多个代码"而低估集中度。
+3. **流动性折价**：对买卖价差超过常态阈值、或日成交量不足以在目标止损价附近退出的品种，仓位规模应在量化规则基础上进一步打折。
+4. **政策尾部情景**：必须明确列出"若主要生产国突然全面放开/进一步收紧管制"对当前头寸的影响方向与幅度估计，即使该情景概率较低。
+5. **证伪优先于确认**：输出必须包含**"本策略在什么条件下被证伪"**的独立段落。证伪条件应是可观测的（如"LME 库存连续 N 周累积""境外溢价收窄至 X 以下""出口许可证发放量恢复至 Y"），而非模糊的"基本面变化"。
+
+---
+
+## 六、输出规范
+
+### 6.1 标准输出结构
+
+每次针对一个金属品种的完整分析，按以下顺序输出：
+
+#### A. 市场状态标签
+
+一句话声明当前 regime（政策冲击主导 / 周期性 / 流动性驱动），并给出最多 3 条核心证据。
+
+#### B. 关键数据快照
+
+供给集中度（HHI 或定性等级）、库存分位、期限结构信号、内外价差状态、近期政策事件。标注哪些维度缺失。
+
+#### C. 价格情景
+
+三情景表格：情景名称 / 触发条件 / 价格区间（或相对当前的变化幅度）/ 概率权重 / 预测期限。禁止单点价格。
+
+#### D. 策略建议
+
+方向偏好（多/空/中性）及依据；建议工具/载体；入场触发条件；仓位规模的计算过程与结果；止损/退出条件。
+
+#### E. 证伪条件
+
+独立段落，列出使上述方向判断和策略建议失效的可观测事件或数据阈值。
+
+#### F. 风险与局限声明
+
+明确列出：数据缺失、模型在该品种上的已知失效场景、流动性/跳空风险、政策不可预测性。
+
+### 6.2 语气与边界
+
+- 使用**条件性、概率性语言**。禁止"必然""将会""确定"等表述。
+- 不对未上市或流动性极低的品种给出可执行交易建议，仅输出监测框架。
+- 当输入信息不足以支撑任何方向性判断时，输出**"不足以形成策略建议"**，并列出所需补充的最小数据清单。这是合法且有价值的输出，而非失败。
+- 在涉及具体买卖方向时，附加一句标准化边界声明：
+  **"以下内容为基于公开信息的分析框架输出，不构成投资建议；实际决策需结合用户自身的风险承受能力、资金约束与合规要求。"**
+
+---
+
+## 七、失败模式清单（Agent 不应做的事）
+
+- ❌ 用同一个模型或同一套因子逻辑分析所有稀有金属。
+- ❌ 在出口管制事件正在演进时，用事件前的价格时间序列外推"正常区间"。
+- ❌ 将境内价格作为存在管制品种的"全球锚"——境内外可能已是两个市场。
+- ❌ 因为"长期需求故事好"而在供给集中度极高、政策风险未定价的品种上给出重仓方向建议。
+- ❌ 输出没有证伪条件的"持有/买入/卖出"建议。
+- ❌ 用名义金额而非波动率/ATR 决定小品种仓位。
+- ❌ 将多个同族金属的多头头寸视为"分散化"。
+`;
+
+function runtimeNote(){
+  const d = new Date();
+  const ds = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+  return '【运行环境补充】今日日期：' + ds + '。本环境无法联网获取实时行情、库存与政策公告；对用户未提供的数据维度，请按系统提示词第 2 节要求显式标注缺失并下调置信度；当信息不足以形成方向性判断时，按 6.2 节输出"不足以形成策略建议"及最小数据清单。';
+}
+function toolsNote(){
+  const modeMap={confirm:'变更前确认（写文件/运行代码/执行命令前会弹窗请求用户批准）', auto:'自主模式（工作区内的文件与代码操作自动执行，无 shell）', full:'完全访问（所有工具自动执行，含 shell 命令）'};
+  return '【工具说明】可用工具：web_search（联网搜索当前信息；建议中英文关键词各搜一次交叉验证）、web_fetch（读取指定网页正文）、calculator（简单数值的精确计算，百分比按小数书写）、'
+    +'run_code（编写并运行完整 Node.js 程序——多步计算、批量处理、模拟推演、数据解析等任务必须写程序完成而非多次调 calculator；代码必须完整可运行，用 console.log 输出中间与最终结果）、'
+    +'write_file（在工作区创建/覆盖文件，自动建目录）、read_file（读工作区文件）、list_files（列工作区目录）'
+    +(cfg.permissionMode==='full'?'、run_command（执行 shell 命令，务必谨慎使用）':'')
+    +'。文件与程序路径一律使用相对工作区的相对路径（如 src/main.js）。工作区目录：'+cfg.workspaceDir+'。当前权限模式：'+(modeMap[cfg.permissionMode]||modeMap.confirm)+'。'
+    +'\n【上下文压缩说明】长对话中较早的轮次会被折叠为"会话回顾"摘要、较早已消费的工具回合会被折叠为"过程回顾"；需要早前的精确数字/路径/工具输出时，调用 recall_history 用关键词取回原文，不要凭摘要编造精确数据。'
+    +(pluginTools.length?('另有已启用插件提供的工具（current_time 等），工具详情见 function 定义，调用结果以插件返回为准。'):'')
+    +'需要"写一个程序"类请求时：先用 write_file 保存代码文件，再用 run_code 运行验证，把运行结果和代码一并汇报。'
+    +'获取到数据后仍按系统提示词第 6 节输出 A–F 结构并标注来源与时间；工具失败或结果不足时按第 2 节与 6.2 节处理。';
+}
+
+/* ================= 演示样例 ================= */
+const DEMO_ANSWER = `> **演示样例**：以下为离线静态内容，仅用于展示 Agent 的输出结构（A–F），数据为示例值，**非实时分析**。在设置中配置 API Key 并关闭演示模式后，即可对真实问题生成完整分析。
+
+#### A. 市场状态标签
+
+**政策/供给冲击主导**。核心证据：
+
+1. 主要生产国出口管制处于"落地—执行"阶段，覆盖税目近两年持续扩大；
+2. 境外价格对境内价格维持显著溢价，且未见随时间收敛；
+3. 交易所可观测库存处于历史低分位（示例约 10%）且仍在去化。
+
+#### B. 关键数据快照
+
+| 维度 | 状态 | 置信度 |
+|---|---|---|
+| 供给集中度 | 极高（HHI 定性等级：高，单一国别占比约 45–50%） | 中 |
+| 库存分位 | 历史约 10% 分位，连续去化 | 低（隐形库存未知） |
+| 期限结构 | 现货升水（backwardation），近端加深 | 中 |
+| 内外价差 | 境外溢价处于高位并走扩 | 中 |
+| 政策事件 | 管制清单延伸讨论中，豁免名单存在不确定性 | 低 |
+
+缺失维度：矿山成本曲线更新、隐形库存估计、需求价格弹性数据。
+
+#### C. 价格情景（预测期限：3 个月）
+
+| 情景 | 触发条件 | 价格区间（相对当前） | 概率权重 |
+|---|---|---|---|
+| 短缺深化 | 管制加码或豁免不及预期；库存续降 | +25% ～ +60% | 45% |
+| 基准延续 | 政策维持现状，库存低位震荡 | -5% ～ +15% | 40% |
+| 供给缓解 | 配额/豁免显著放松，或下游需求破坏 | -15% ～ -30% | 15% |
+
+本期限内主导逻辑为政策事件流与库存轨迹，而非价格趋势外推；按"火箭—羽毛"不对称性，上行区间幅度已放大。
+
+#### D. 策略建议
+
+- **方向**：偏多（信号收敛：境外溢价走扩 + 库存去化 + backwardation 加深；中期动量未出现背离）。
+- **工具**：事件窗口后以现货/远期锁价为主；期货仅限流动性允许的合约；高波动品种不裸卖近月期权。
+- **入场触发**：价格回落至 20 日 ATR 下沿附近且库存未转为累积；或管制加码公告落地但市场尚未完成定价（事件驱动，需缩小规模）。
+- **仓位（固定比例风险法，计算过程）**：事件窗口单笔风险取 1%；入场价 100、止损价 88（约 1.4×ATR），单笔亏损幅度 12%；名义仓位 ≈ 1% ÷ 12% ≈ 8.3%（占风险资本比例）；流动性折价后再减半，实际约 4%。
+- **止损/退出**：价格跌破证伪位；或库存连续 4 周累积即离场——逻辑同源退出优先于价格止损。
+
+#### E. 证伪条件
+
+以下任一**可观测事件**出现，即推翻上述偏多判断：
+
+1. 交易所库存连续 4 周累积；
+2. 境外溢价收窄至管制事件前水平以下；
+3. 出口许可证发放量明确恢复，或管制扩大被官方辟谣/正式延后；
+4. 主要下游（阻燃剂/光伏玻璃）开工率连续两个月下滑超过 15%。
+
+#### F. 风险与局限声明
+
+- 数据缺失：隐形库存、成本曲线、需求弹性未纳入，C 节概率权重对此敏感；
+- 模型失效场景：政策断点附近，历史价格序列外推不可靠（本品种应以情景分析为主）；
+- 流动性/跳空风险：小品种盘口稀薄，隔夜跳空可使止损失效，尾部情景需预设损失上限；
+- 政策不可预测性：管制豁免名单与执行节奏不可建模，只能以触发条件应对。
+
+以下内容为基于公开信息的分析框架输出，不构成投资建议；实际决策需结合用户自身的风险承受能力、资金约束与合规要求。`;
+
+/* ================= 迷你 Markdown 渲染 ================= */
+function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+function inlineMd(s){
+  const codes=[];
+  s=s.replace(/`([^`]+)`/g,(m,c)=>{codes.push('<code>'+c+'</code>');return '\u0000'+(codes.length-1)+'\u0000';});
+  s=s.replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>');
+  s=s.replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g,'<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+  s=s.replace(/\u0000(\d+)\u0000/g,(m,i)=>codes[+i]);
+  return s;
+}
+function mdToHtml(src){
+  const lines=esc(src).split(/\r?\n/);
+  const out=[]; let pbuf=[]; let i=0;
+  const flushP=()=>{ if(pbuf.length){out.push('<p>'+pbuf.map(inlineMd).join('<br>')+'</p>'); pbuf=[];} };
+  while(i<lines.length){
+    const line=lines[i];
+    if(/^```/.test(line)){
+      flushP(); i++; const buf=[];
+      while(i<lines.length && !/^```/.test(lines[i])){buf.push(lines[i]); i++;}
+      i++; out.push('<div class="codebox"><button class="codecopy">复制代码</button><pre><code>'+buf.join('\n')+'</code></pre></div>'); continue;
+    }
+    if(/^\s*\|/.test(line) && i+1<lines.length && /^\s*\|[\s:|-]+\|?\s*$/.test(lines[i+1])){
+      flushP();
+      const parseRow=l=>l.trim().replace(/^\||\|$/g,'').split('|').map(c=>c.trim());
+      const head=parseRow(line); i+=2; const rows=[];
+      while(i<lines.length && /^\s*\|/.test(lines[i])){rows.push(parseRow(lines[i])); i++;}
+      let t='<table><thead><tr>'+head.map(h=>'<th>'+inlineMd(h)+'</th>').join('')+'</tr></thead><tbody>';
+      for(const r of rows){ t+='<tr>'+head.map((_,ci)=>'<td>'+inlineMd(r[ci]||'')+'</td>').join('')+'</tr>'; }
+      out.push(t+'</tbody></table>'); continue;
+    }
+    const h=line.match(/^(#{1,6})\s+(.*)$/);
+    if(h){ flushP(); const lv=Math.max(2,Math.min(4,h[1].length)); out.push('<h'+lv+'>'+inlineMd(h[2])+'</h'+lv+'>'); i++; continue; }
+    if(/^\s*(-{3,}|\*{3,})\s*$/.test(line)){ flushP(); out.push('<hr>'); i++; continue; }
+    if(/^\s*&gt;\s?/.test(line)){
+      flushP(); const buf=[];
+      while(i<lines.length && /^\s*&gt;\s?/.test(lines[i])){ buf.push(lines[i].replace(/^\s*&gt;\s?/,'')); i++; }
+      out.push('<blockquote>'+buf.map(inlineMd).join('<br>')+'</blockquote>'); continue;
+    }
+    if(/^\s*([-*]|\d+\.)\s+/.test(line)){
+      flushP(); const type=/^\s*\d+\./.test(line)?'ol':'ul'; const items=[];
+      while(i<lines.length && /^\s*([-*]|\d+\.)\s+/.test(lines[i])){ items.push(lines[i].replace(/^\s*([-*]|\d+\.)\s+/,'')); i++; }
+      out.push('<'+type+'>'+items.map(x=>'<li>'+inlineMd(x)+'</li>').join('')+'</'+type+'>'); continue;
+    }
+    if(/^\s*$/.test(line)){ flushP(); i++; continue; }
+    pbuf.push(line); i++;
+  }
+  flushP();
+  return out.join('\n');
+}
+
+/* ================= 状态与存储 ================= */
+const LS='rma.';
+const PROVIDERS={
+  zhipu:{baseUrl:'https://open.bigmodel.cn/api/paas/v4', model:'glm-4.6', hint:'Key 在 open.bigmodel.cn 获取；免费档可把模型改为 glm-4-flash'},
+  deepseek:{baseUrl:'https://api.deepseek.com/v1', model:'deepseek-chat', hint:'Key 在 platform.deepseek.com 获取；开启"深度思考"会自动切换 deepseek-reasoner'},
+  qwen:{baseUrl:'https://dashscope.aliyuncs.com/compatible-mode/v1', model:'qwen-plus', hint:'阿里云百炼的 OpenAI 兼容模式；Key 为 DASHSCOPE_API_KEY'},
+  siliconflow:{baseUrl:'https://api.siliconflow.cn/v1', model:'deepseek-ai/DeepSeek-V3', hint:'硅基流动 cloud.siliconflow.cn，注册有免费额度；模型名带厂商前缀'},
+  doubao:{baseUrl:'https://ark.cn-beijing.volces.com/api/v3', model:'doubao-pro-32k', hint:'火山方舟；"模型"处可能需要填推理接入点 ID（ep-xxxxxx）而非模型名'},
+  moonshot:{baseUrl:'https://api.moonshot.cn/v1', model:'moonshot-v1-8k', hint:'Key 在 platform.moonshot.cn 获取'},
+  hunyuan:{baseUrl:'https://api.hunyuan.cloud.tencent.com/v1', model:'hunyuan-turbos-latest', hint:'腾讯云混元 OpenAI 兼容接口；需在控制台开通并创建 API Key'},
+  qianfan:{baseUrl:'https://qianfan.baidubce.com/v2', model:'ernie-4.0-8k', hint:'百度千帆 v2 兼容接口；Key 为千帆 API Key（bearer）'},
+  spark:{baseUrl:'https://spark-api-open.xf-yun.com/v1', model:'generalv3.5', hint:'讯飞星火 HTTP 接口；此处 API Key 填 APIPassword（不是 AppID）'},
+  yi:{baseUrl:'https://api.lingyiwanwu.com/v1', model:'yi-large', hint:'零一万物 platform.lingyiwanwu.com'},
+  step:{baseUrl:'https://api.stepfun.com/v1', model:'step-2-16k', hint:'阶跃星辰 platform.stepfun.com'},
+  openai:{baseUrl:'https://api.openai.com/v1', model:'gpt-4o-mini', hint:'需可直连 OpenAI 的网络环境'},
+  openrouter:{baseUrl:'https://openrouter.ai/api/v1', model:'openai/gpt-4o-mini', hint:'聚合接口，一个 Key 调多家模型；模型名需带厂商前缀'},
+  groq:{baseUrl:'https://api.groq.com/openai/v1', model:'llama-3.3-70b-versatile', hint:'Groq 免费额度、速度快；可能需要代理网络'},
+  custom:{baseUrl:'', model:'', hint:'任意 OpenAI 兼容 /chat/completions 端点（含本地 Ollama：http://127.0.0.1:11434/v1）'}
+};
+const defCfg={provider:'zhipu', baseUrl:PROVIDERS.zhipu.baseUrl, apiKey:'', model:PROVIDERS.zhipu.model,
+  temp:0.6, stream:true, think:false, demo:true, tools:true, proxyUrl:'http://127.0.0.1:8210',
+  legacyRender:false, maxToolRounds:25, permissionMode:'confirm', workspaceDir:'workspace', contextBudget:12000};
+let cfg={...defCfg};
+try{ Object.assign(cfg, JSON.parse(localStorage.getItem(LS+'cfg')||'{}')); }catch(e){}
+let msgs=[];
+try{ msgs=JSON.parse(localStorage.getItem(LS+'msgs')||'[]'); if(!Array.isArray(msgs)) msgs=[]; }catch(e){ msgs=[]; }
+
+const saveCfg=()=>localStorage.setItem(LS+'cfg', JSON.stringify(cfg));
+const saveMsgs=()=>localStorage.setItem(LS+'msgs', JSON.stringify(msgs));
+const effDemo=()=> cfg.demo || !String(cfg.apiKey||'').trim();
+
+/* ================= DOM ================= */
+const $=id=>document.getElementById(id);
+const chatScroll=$('chatScroll'), messagesEl=$('messages'), welcomeEl=$('welcome');
+const ta=$('ta'), btnSend=$('btnSend'), btnStop=$('btnStop'), modeBadge=$('modeBadge');
+const scrim=$('scrim'), drawerSettings=$('drawerSettings'), drawerPrompt=$('drawerPrompt');
+
+function toast(t){
+  const el=$('toast'); el.textContent=t; el.classList.add('show');
+  clearTimeout(el._t); el._t=setTimeout(()=>el.classList.remove('show'), 2200);
+}
+
+/* ===== 剪贴板：复制两级降级，粘贴失败引导手动 ===== */
+async function copyText(t){
+  t=String(t??'');
+  try{
+    if(navigator.clipboard && navigator.clipboard.writeText && window.isSecureContext){
+      await navigator.clipboard.writeText(t);
+      return true;
+    }
+  }catch(e){ /* 权限失败 → 降级 */ }
+  try{
+    const h=document.createElement('textarea');
+    h.value=t;
+    h.style.cssText='position:fixed;top:-999px;left:0;opacity:0';
+    document.body.appendChild(h);
+    h.focus(); h.select();
+    const ok=document.execCommand('copy');
+    h.remove();
+    return ok;
+  }catch(e){ return false; }
+}
+function insertAtCursor(el, t){
+  const s=el.selectionStart??el.value.length, e2=el.selectionEnd??s;
+  el.value=el.value.slice(0,s)+t+el.value.slice(e2);
+  const pos=s+t.length;
+  el.setSelectionRange(pos,pos);
+  el.dispatchEvent(new Event('input'));
+}
+async function pasteInto(el){
+  try{
+    if(navigator.clipboard && navigator.clipboard.readText){
+      const t=await navigator.clipboard.readText();
+      if(t){ insertAtCursor(el, t); el.focus(); return true; }
+      toast('剪贴板是空的');
+      return false;
+    }
+  }catch(e){ /* 权限被拒 / 浏览器不支持 readText */ }
+  el.focus();
+  toast('无法读取剪贴板——请 Ctrl+V（手机长按输入框选"粘贴"）');
+  return false;
+}
+async function pasteText(){
+  return pasteInto(ta);
+}
+function openDrawer(d){ closeDrawers(); d.classList.add('open'); scrim.classList.add('show'); }
+function closeDrawers(){
+  drawerSettings.classList.remove('open'); drawerPrompt.classList.remove('open'); scrim.classList.remove('show');
+}
+scrim.addEventListener('click', closeDrawers);
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeDrawers(); });
+
+/* ================= 果冻开关 ================= */
+function makeJelly(root, initial, onChange){
+  const track=root.querySelector('.track'), knob=root.querySelector('.knob');
+  const MAX=26; let on=!!initial, dragging=false, startX=0, baseX=0, lastX=0, moved=false, settleT=null;
+  const apply=(x,s)=>{ knob.style.transform='translateX('+x+'px) scaleX('+s+')'; };
+  const render=()=>{ root.classList.toggle('on',on); root.setAttribute('aria-checked', on?'true':'false'); };
+  apply(on?MAX:0, 1); render();
+  root.addEventListener('pointerdown', e=>{
+    e.preventDefault();
+    dragging=true; moved=false; startX=e.clientX; baseX=on?MAX:0; lastX=baseX;
+    root.classList.add('dragging'); root.classList.remove('settle');
+    clearTimeout(settleT);
+    try{ root.setPointerCapture(e.pointerId); }catch(err){}
+  });
+  root.addEventListener('pointermove', e=>{
+    if(!dragging) return;
+    const dx=e.clientX-startX;
+    if(Math.abs(dx)>3) moved=true;
+    lastX=Math.min(MAX, Math.max(0, baseX+dx));
+    apply(lastX, 1.22);
+  });
+  const end=()=>{
+    if(!dragging) return;
+    dragging=false;
+    root.classList.remove('dragging'); root.classList.add('settle');
+    on = moved ? (lastX >= MAX/2) : !on;
+    apply(on?MAX:0, 1); render();
+    settleT=setTimeout(()=>root.classList.remove('settle'), 400);
+    if(onChange) onChange(on);
+  };
+  root.addEventListener('pointerup', end);
+  root.addEventListener('pointercancel', end);
+  root.addEventListener('keydown', e=>{
+    if(e.key===' '||e.key==='Enter'){ e.preventDefault(); on=!on; root.classList.add('settle'); apply(on?MAX:0,1); render();
+      settleT=setTimeout(()=>root.classList.remove('settle'),400); if(onChange) onChange(on); }
+  });
+  return { get:()=>on, set:v=>{ on=!!v; root.classList.add('settle'); apply(on?MAX:0,1); render();
+    settleT=setTimeout(()=>root.classList.remove('settle'),400); } };
+}
+
+/* ================= 消息渲染 ================= */
+const fmtTime=t=>{ const d=new Date(t); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); };
+
+function addMessage(role, content, tag){
+  const wrap=document.createElement('div');
+  wrap.className='msg '+role;
+  const av=document.createElement('div'); av.className='avatar';
+  av.textContent = role==='user' ? '你' : 'CM';
+  const col=document.createElement('div'); col.className='col';
+  const meta=document.createElement('div'); meta.className='meta';
+  meta.textContent=(role==='user'?'你':'Critical Minerals Desk')+(tag?' · '+tag:'')+' · '+fmtTime(Date.now());
+  const bubble=document.createElement('div'); bubble.className='bubble glass raised';
+  const md=document.createElement('div'); md.className='md';
+  bubble.appendChild(md);
+  col.appendChild(meta); col.appendChild(bubble);
+
+  const handle={ el:wrap, raw:content, mdEl:md, bubble, trace:[],
+    render(t, withCaret){
+      this.raw=t;
+      wrap._rawSrc=t;
+      md.innerHTML=mdToHtml(t)+(withCaret?'<span class="caret"></span>':'');
+    },
+    addTrace(name,args){
+      const a=args||{};
+      const desc = name==='web_search' ? '🔍 web_search：'+String(a.query||'')
+        : name==='web_fetch' ? '📄 web_fetch：'+String(a.url||'')
+        : name==='calculator' ? '🧮 calculator：'+String(a.expression||'')
+        : '🔧 '+name+'：'+JSON.stringify(a).slice(0,80);
+      this.trace.push(desc);
+      this.renderTrace();
+    },
+    renderTrace(){
+      let el=this.bubble.querySelector('.tool-trace');
+      if(!this.trace.length){ if(el) el.remove(); return; }
+      if(!el){ el=document.createElement('div'); el.className='tool-trace'; this.bubble.insertBefore(el,this.mdEl); }
+      el.innerHTML=this.trace.map(t=>'<div>'+esc(t)+'</div>').join('');
+      stickBottom(false);
+    }};
+  if(role!=='user'){
+    const actions=document.createElement('div'); actions.className='msg-actions';
+    const copy=document.createElement('button'); copy.className='icon-btn'; copy.textContent='⧉ 复制';
+    copy.addEventListener('click', ()=>{
+      copyText(handle.raw).then(ok=>toast(ok?'已复制 Markdown':'复制失败——请手动选择文本复制'));
+    });
+    const like=document.createElement('button'); like.className='like'; like.title='有用';
+    like.innerHTML='<span class="heartbox"><span class="heart">♥</span></span><span class="cnt">0</span>';
+    bindLike(like);
+    actions.appendChild(copy); actions.appendChild(like);
+    col.appendChild(actions);
+  }
+  wrap.appendChild(av); wrap.appendChild(col);
+  messagesEl.appendChild(wrap);
+  handle.render(content, false);
+  stickBottom(true);
+  return handle;
+}
+
+function bindLike(btn){
+  btn.addEventListener('click', ()=>{
+    if(btn.classList.contains('done')) return;   // 单次播放，不可重入
+    btn.classList.add('done');
+    const heart=btn.querySelector('.heart'), box=btn.querySelector('.heartbox'), cnt=btn.querySelector('.cnt');
+    heart.classList.add('pop');                   // 缩小 0.8 → 弹性回弹，灰→红，总时长 600ms
+    const n=6+Math.floor(Math.random()*3);        // 6~8 个粒子
+    for(let k=0;k<n;k++){
+      const p=document.createElement('span'); p.className='p';
+      const ang=(Math.PI*2*k)/n + Math.random()*0.5, d=26+Math.random()*18;
+      p.style.setProperty('--tx', Math.cos(ang)*d+'px');
+      p.style.setProperty('--ty', Math.sin(ang)*d+'px');
+      p.style.background=['#ff5d73','#ff8fa0','#ffd166'][k%3];
+      box.appendChild(p);
+      p.addEventListener('animationend', ()=>p.remove());
+    }
+    cnt.classList.add('roll');                    // 数字上滚一位
+    setTimeout(()=>{ cnt.textContent=String(parseInt(cnt.textContent||'0',10)+1); },170);
+    setTimeout(()=>cnt.classList.remove('roll'), 430);
+  });
+}
+
+function stickBottom(force){
+  const near = chatScroll.scrollHeight - chatScroll.scrollTop - chatScroll.clientHeight < 140;
+  if(force || near) chatScroll.scrollTop=chatScroll.scrollHeight;
+}
+function updateWelcome(){ welcomeEl.hidden = msgs.length>0; }
+
+/* ================= API 调用 ================= */
+/* ================= 上下文压缩（确定性，零依赖） ================= */
+function estTokens(s){
+  s=String(s||'');
+  let cjk=0;
+  for(const ch of s){ if(ch.codePointAt(0)>0x2E80) cjk++; }
+  return cjk + Math.ceil((s.length-cjk)/4) + 8;
+}
+function stripMd(s){
+  return String(s||'').replace(/```[\s\S]*?```/g,'[代码]').replace(/[#>*`|]/g,' ').replace(/\s+/g,' ').trim();
+}
+function firstLine(s,n){
+  s=String(s||'').trim().split('\n')[0].trim();
+  return s.slice(0,n)+(s.length>n?'…':'');
+}
+/* 归档：被折叠轮次/回合的原文，供 recall_history 检索 */
+const historyArchive=[];
+try{ historyArchive.push(...JSON.parse(localStorage.getItem(LS+'archive')||'[]')); }catch(e){}
+function archivePush(a){
+  if(historyArchive.some(x=>x.text===a.text)) return;
+  historyArchive.push(a);
+  if(historyArchive.length>300) historyArchive.splice(0, historyArchive.length-300);
+  try{ localStorage.setItem(LS+'archive', JSON.stringify(historyArchive)); }catch(e){}
+}
+function recallHistory(kw){
+  kw=String(kw||'').trim();
+  if(!kw) return '（未提供关键词）';
+  const kws=kw.split(/\s+/).filter(Boolean);
+  const hits=[];
+  for(let i=historyArchive.length-1; i>=0 && hits.length<5; i--){
+    if(kws.some(k=>historyArchive[i].text.includes(k))) hits.push(historyArchive[i]);
+  }
+  if(!hits.length) return '归档中未找到与"'+kw+'"相关的内容（归档共 '+historyArchive.length+' 条）。';
+  let out='找到 '+hits.length+' 条归档原文：';
+  hits.forEach((h,i)=>{ out+='\n\n['+(i+1)+'] '+h.label+'\n'+h.text.slice(0,1200)+(h.text.length>1200?'…':''); });
+  return out.slice(0,6000);
+}
+/* 轮次分组：每条 user 开启一轮 */
+function groupTurns(list){
+  const turns=[]; let cur=null;
+  for(const m of list){
+    if(m.role==='user'){ cur={user:m, rest:[]}; turns.push(cur); }
+    else{ if(!cur){ cur={user:{role:'user', content:'（会话开始）'}, rest:[]}; turns.push(cur); } cur.rest.push(m); }
+  }
+  return turns;
+}
+const turnCost=t=>estTokens(t.user.content)+t.rest.reduce((a,m)=>a+estTokens(m.content),0);
+
+function buildMessages(){
+  const budget=Math.max(2000, +cfg.contextBudget||12000);
+  let sys=SYSTEM_PROMPT+'\n\n'+runtimeNote();
+  if(cfg.tools) sys+='\n\n'+toolsNote();
+  const turns=groupTurns(msgs.slice(-60));
+  // 从最新往回保留完整轮次（当前轮绝不动；至少保留最近 1 轮）
+  let acc=estTokens(sys), keepFrom=turns.length;
+  for(let i=turns.length-1; i>=0; i--){
+    const c=turnCost(turns[i]);
+    if(acc+c>budget && i<turns.length-1) break;
+    acc+=c; keepFrom=i;
+  }
+  // 折叠更早轮次：只在确实省 token 时折（不越压越大）；省不了的短轮次原文保留
+  let recapLines='', tiny=[];
+  if(keepFrom>0){
+    for(const t of turns.slice(0, keepFrom)){
+      const ans=stripMd((t.rest.filter(m=>m.role==='assistant').pop()||{}).content||'（无回复）');
+      const line='- 问：'+firstLine(stripMd(t.user.content),80)+' → 答：'+firstLine(ans,120);
+      if(estTokens(line)<turnCost(t)*0.8){
+        recapLines+=(recapLines?'\n':'')+line;
+        archivePush({label:'轮次 · 问：'+firstLine(stripMd(t.user.content),40), text:'用户：'+t.user.content+'\n\n'+t.rest.map(m=>(m.role==='assistant'?'助手：':'')+(m.content||'')).join('\n\n')});
+        window.__stats && window.__stats.turnFolds++;
+      }else{
+        tiny.push(t);
+      }
+    }
+  }
+  if(recapLines) sys+='\n\n【会话回顾 · 更早轮次摘要（原文已归档，可用 recall_history 关键词检索）】\n'+recapLines;
+  const out=[{role:'system', content:sys}];
+  for(const t of tiny){
+    out.push({role:'user', content:t.user.content});
+    for(const m of t.rest) out.push({role:m.role, content:m.content});
+  }
+  for(const t of turns.slice(keepFrom)){
+    out.push({role:'user', content:t.user.content});
+    for(const m of t.rest) out.push({role:m.role, content:m.content});
+  }
+  return out;
+}
+/* 工具配对愈合：assistant.tool_calls 必须有对应 tool 回复，悬空自动补占位 */
+function sanitizeToolPairs(list){
+  const out=[];
+  for(let i=0;i<list.length;i++){
+    const m=list[i];
+    out.push(m);
+    if(m.role==='assistant' && m.tool_calls){
+      const ids=(m.tool_calls||[]).map(tc=>tc.id);
+      const answered=new Set();
+      for(let j=i+1;j<list.length && list[j].role==='tool';j++) answered.add(list[j].tool_call_id);
+      for(const id of ids) if(!answered.has(id))
+        out.push({role:'tool', tool_call_id:id, content:'（该次调用已中断，无结果）'});
+    }
+  }
+  return out;
+}
+/* 工具回合切分：assistant(tool_calls)+紧随其后的 tool 回复为一个单元 */
+function splitUnits(work){
+  const units=[]; let i=1;
+  while(i<work.length){
+    if(work[i].role==='assistant' && work[i].tool_calls){
+      let j=i+1;
+      while(j<work.length && work[j].role==='tool') j++;
+      units.push({from:i, to:j});
+      i=j;
+    }else{ units.push({from:i, to:i+1}); i++; }
+  }
+  return units;
+}
+const workTokens=work=>work.reduce((a,m)=>a+estTokens(m.content)+estTokens(JSON.stringify(m.tool_calls||'')),0);
+/* 轮内压缩：只在工具回合间隙执行，整单元折叠（不破坏配对），只在实际省 token 时折 */
+function compressWork(work, budget){
+  if(workTokens(work)<=budget) return false;
+  const units=splitUnits(work);
+  if(units.length<=6) return false;
+  const foldable=units.slice(1, units.length-3);
+  if(!foldable.length) return false;
+  let lines='', saved=0; const archived=[];
+  for(const u of foldable){
+    const uText=work.slice(u.from,u.to).map(m=>m.content||JSON.stringify(m.tool_calls||'')).join('\n');
+    const uCost=estTokens(uText);
+    let line='';
+    for(const m of work.slice(u.from,u.to)){
+      if(m.role==='assistant'&&m.tool_calls) for(const tc of m.tool_calls) line+='- 调用 '+tc.function.name+'('+String(tc.function.arguments).slice(0,60)+')\n';
+      if(m.role==='tool') line+='  → '+String(m.content).slice(0,80).replace(/\n/g,' ')+'\n';
+    }
+    if(estTokens(line)<uCost*0.8){
+      lines+=line; saved+=uCost-estTokens(line);
+      archived.push({label:'工具回合', text:uText});
+    }
+  }
+  if(!saved) return false;
+  const recap={role:'user', content:'【过程回顾】本次任务中更早的工具回合摘要如下（原文已归档，可用 recall_history 关键词检索）：\n'+lines};
+  const start=foldable[0].from, end=units[units.length-3].from;
+  work.splice(start, end-start, recap);
+  for(const a of archived) archivePush(a);
+  window.__stats && window.__stats.workFolds++;
+  return true;
+}
+
+/* ---------- calculator：安全的数学表达式解析器（递归下降，无 eval） ---------- */
+function calcEval(expr){
+  const s=String(expr)
+    .replace(/(\d),(?=\d{3}(?!\d))/g,'$1').replace(/，/g,'')
+    .replace(/×/g,'*').replace(/÷/g,'/').replace(/−/g,'-').replace(/－/g,'-')
+    .replace(/（/g,'(').replace(/）/g,')').replace(/π/g,'pi').replace(/\*\*/g,'^');
+  let i=0;
+  const ws=()=>{ while(i<s.length && /\s/.test(s[i])) i++; };
+  function parseExpr(){ let v=parseTerm(); for(;;){ ws(); const c=s[i];
+    if(c==='+'||c==='-'){ i++; const r=parseTerm(); v = c==='+' ? v+r : v-r; } else return v; } }
+  function parseTerm(){
+    let v=parseFactor();
+    for(;;){ ws(); const c=s[i];
+      if(c==='*'||c==='/'){ i++; const r=parseFactor(); v = c==='*' ? v*r : v/r; }
+      else if(c==='%'){
+        let j=i+1; while(j<s.length && /\s/.test(s[j])) j++;
+        const nx=s[j];
+        if(nx!==undefined && /[0-9.(]/.test(nx)){ i++; const r=parseFactor(); v=v%r; }  // 取模
+        else { i++; v=v/100; }                                                        // 百分号
+      }
+      else return v;
+    }
+  }
+  function parseFactor(){ let v=parseUnary(); ws(); if(s[i]==='^'){ i++; return Math.pow(v, parseFactor()); } return v; }
+  function parseUnary(){ ws(); if(s[i]==='-'){ i++; return -parseUnary(); } if(s[i]==='+'){ i++; return parseUnary(); } return parseAtom(); }
+  function parseAtom(){
+    ws();
+    if(s[i]==='('){ i++; const v=parseExpr(); ws(); if(s[i]!==')') throw new Error('缺少右括号'); i++; return v; }
+    const num=/^(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?/.exec(s.slice(i));
+    if(num){ i+=num[0].length; return parseFloat(num[0]); }
+    const id=/^[a-zA-Z_][a-zA-Z0-9_]*/.exec(s.slice(i));
+    if(id){
+      const name=id[0]; i+=name.length; ws();
+      if(name==='pi') return Math.PI;
+      if(name==='e') return Math.E;
+      const FN={sqrt:Math.sqrt,cbrt:Math.cbrt,abs:Math.abs,ln:Math.log,log:Math.log10,log10:Math.log10,log2:Math.log2,
+        exp:Math.exp,sin:Math.sin,cos:Math.cos,tan:Math.tan,round:Math.round,floor:Math.floor,ceil:Math.ceil,
+        min:Math.min,max:Math.max,pow:Math.pow};
+      const f=FN[name];
+      if(!f) throw new Error('未知标识符: '+name);
+      if(s[i]!=='(') throw new Error(name+' 后需要 (参数)');
+      i++; const args=[parseExpr()]; ws();
+      while(s[i]===','){ i++; args.push(parseExpr()); ws(); }
+      if(s[i]!==')') throw new Error('缺少右括号'); i++;
+      return f(...args);
+    }
+    throw new Error('无法解析: "'+s.slice(i,i+10)+'"');
+  }
+  const v=parseExpr(); ws();
+  if(i<s.length) throw new Error('末尾多余字符: "'+s.slice(i)+'"');
+  if(typeof v!=='number' || isNaN(v)) throw new Error('结果不是有效数字');
+  if(!isFinite(v)) return v;
+  return Math.round(v*1e10)/1e10;
+}
+
+/* ---------- 工具定义与执行 ---------- */
+const FUNCTION_TOOLS=[
+  {type:'function',function:{name:'web_search',description:'搜索互联网获取当前信息（政策公告、价格、库存、新闻等）。返回标题、来源、链接与摘要列表。中文查询相关度不佳时，请改用英文关键词重试。',parameters:{type:'object',properties:{query:{type:'string',description:'搜索关键词'}},required:['query']}}},
+  {type:'function',function:{name:'web_fetch',description:'读取指定 URL 网页的正文文本（自动去脚本/样式、跟随搜索引擎跳转），用于核实搜索结果中的具体页面。',parameters:{type:'object',properties:{url:{type:'string',description:'完整 http/https 链接'}},required:['url']}}},
+  {type:'function',function:{name:'calculator',description:'精确计算数学表达式。支持 + - * / % ^(幂)、括号、sqrt/cbrt/abs/ln/log/exp/min/max/round/pow 等函数与 pi、e；独立出现的 % 按百分号处理（15%=0.15），百分比建议直接写小数。简单数值计算必须用本工具；复杂/多步/批量计算请改用 run_code 写程序。',parameters:{type:'object',properties:{expression:{type:'string',description:'数学表达式，如 0.01/0.12*100 或 sqrt(2)*1.414'}},required:['expression']}}},
+  {type:'function',function:{name:'run_code',description:'编写并运行完整 Node.js 程序（在本机执行）。用于：多步/批量数值计算、数据处理与解析、模拟推演、生成报表数据、验证算法逻辑。代码必须完整可运行，用 console.log 输出结果（包括中间结果）。不要读写工作区之外的任何路径。',parameters:{type:'object',properties:{code:{type:'string',description:'完整 Node.js 代码'},timeoutMs:{type:'number',description:'超时毫秒数，默认 30000，最大 120000'}},required:['code']}}},
+  {type:'function',function:{name:'write_file',description:'在工作区内创建或覆盖文本文件（自动创建子目录）。用于保存编写的程序、文档、数据文件。',parameters:{type:'object',properties:{path:{type:'string',description:'工作区内相对路径，如 src/main.js'},content:{type:'string',description:'文件完整内容'}},required:['path','content']}}},
+  {type:'function',function:{name:'read_file',description:'读取工作区内文本文件的内容。',parameters:{type:'object',properties:{path:{type:'string',description:'工作区内相对路径'}},required:['path']}}},
+  {type:'function',function:{name:'list_files',description:'列出工作区内某目录的文件与子目录。',parameters:{type:'object',properties:{path:{type:'string',description:'相对路径，默认根目录'}}}}},
+  {type:'function',function:{name:'recall_history',description:'检索本会话早前被压缩归档的原文（旧轮次对话、工具调用的完整输出等）。当你需要引用早前的精确数字、路径、链接或工具输出，而上下文里只有摘要时，用关键词调用本工具取回原文，不要凭记忆编造。',parameters:{type:'object',properties:{keyword:{type:'string',description:'检索关键词，如工具名、文件路径、数字、URL 片段'}},required:['keyword']}}}
+];
+const CMD_TOOL={type:'function',function:{name:'run_command',description:'在本机执行任意 shell 命令（完全访问模式专用）。高危操作，命令应尽量只读或明确无害。',parameters:{type:'object',properties:{command:{type:'string',description:'要执行的命令'},timeoutMs:{type:'number',description:'超时毫秒数，默认 30000'}},required:['command']}}};
+const TOOLS_ALL=[{type:'web_search',web_search:{enable:true,search_engine:'search_std'}}].concat(FUNCTION_TOOLS);
+
+async function apiRaw(messages, opts){
+  const url=String(cfg.baseUrl).replace(/\/+$/,'')+'/chat/completions';
+  const body={ model:cfg.model, messages, temperature:+cfg.temp||0.6, stream:!!opts.stream };
+  if(opts.tools){
+    const arr=/bigmodel\.cn|zhipu/i.test(cfg.baseUrl) ? TOOLS_ALL.slice() : FUNCTION_TOOLS.slice();
+    if(cfg.permissionMode==='full') arr.push(CMD_TOOL);
+    for(const t of pluginTools) arr.push({type:'function', function:{name:t.name, description:t.description, parameters:t.parameters||{type:'object',properties:{}}}});
+    body.tools=arr;
+  }
+  if(cfg.think){
+    if(/bigmodel\.cn|zhipu/i.test(cfg.baseUrl)) body.thinking={type:'enabled'};
+    if(/deepseek/i.test(cfg.baseUrl) && /^(deepseek-chat|deepseek-reasoner)$/.test(cfg.model)) body.model='deepseek-reasoner';
+  }
+  const res=await fetch(url,{ method:'POST', signal:opts.signal,
+    headers:{'Content-Type':'application/json','Authorization':'Bearer '+cfg.apiKey},
+    body:JSON.stringify(body)});
+  if(!res.ok){
+    const t=await res.text().catch(()=>'');
+    throw new Error('HTTP '+res.status+(t?(' · '+t.slice(0,260)):''));
+  }
+  return res;
+}
+
+async function callAPI(payload, onDelta, signal){
+  const res=await apiRaw(payload,{stream:true,tools:false,signal});
+  if(!cfg.stream){
+    const j=await res.json();
+    const c=j.choices&&j.choices[0]&&j.choices[0].message&&j.choices[0].message.content||'';
+    onDelta(c); return;
+  }
+  const reader=res.body.getReader(); const dec=new TextDecoder(); let buf='';
+  while(true){
+    const {done,value}=await reader.read();
+    if(done) break;
+    buf+=dec.decode(value,{stream:true});
+    let idx;
+    while((idx=buf.indexOf('\n'))>=0){
+      const line=buf.slice(0,idx).trim(); buf=buf.slice(idx+1);
+      if(!line.startsWith('data:')) continue;
+      const data=line.slice(5).trim();
+      if(data==='[DONE]') return;
+      try{
+        const j=JSON.parse(data);
+        const d=j.choices&&j.choices[0]&&j.choices[0].delta&&j.choices[0].delta.content;
+        if(d) onDelta(d);
+      }catch(e){}
+    }
+  }
+}
+
+async function proxyGet(p, signal){
+  const base=String(cfg.proxyUrl||'').replace(/\/+$/,'');
+  if(!base) throw new Error('未配置工具代理地址（设置 → 工具代理 URL）');
+  const res=await fetch(base+p,{signal});
+  if(!res.ok){
+    let msg='';
+    try{ msg=(await res.json()).error||''; }catch(e){}
+    throw new Error('代理 HTTP '+res.status+(msg?(' · '+msg):''));
+  }
+  const j=await res.json();
+  if(j.error) throw new Error(j.error);
+  return j;
+}
+
+async function proxyPost(p, data, signal){
+  const base=String(cfg.proxyUrl||'').replace(/\/+$/,'');
+  if(!base) throw new Error('未配置工具代理地址（设置 → 工具代理 URL）');
+  const res=await fetch(base+p,{method:'POST',signal,
+    headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+  if(!res.ok){
+    let msg='';
+    try{ msg=(await res.json()).error||''; }catch(e){}
+    throw new Error('代理 HTTP '+res.status+(msg?(' · '+msg):''));
+  }
+  const j=await res.json();
+  if(j.error) throw new Error(j.error);
+  return j;
+}
+
+/* 权限门：变更前确认 / 自主 / 完全访问 */
+const sessionAllowed=new Set();
+function gateTool(name,args){
+  const pt=pluginTools.find(t=>t.name===name);
+  const mutating = name==='write_file'||name==='run_code'||name==='run_command'||(!!pt && !pt.safe);
+  if(!mutating) return Promise.resolve(true);
+  if(cfg.permissionMode==='full'||cfg.permissionMode==='auto') return Promise.resolve(true);
+  if(sessionAllowed.has(name)) return Promise.resolve(true);
+  return showPermModal(name,args);
+}
+function showPermModal(name,args){
+  return new Promise(resolve=>{
+    const body=$('permBody');
+    let html='<div class="kv">工具</div><div>'+esc(name)+'</div>';
+    if(name==='write_file'){
+      html+='<div class="kv">写入路径（工作区内）</div><div>'+esc(args.path||'')+'</div>'
+        +'<div class="kv">内容预览（前 800 字符）</div><pre>'+esc(String(args.content||'').slice(0,800))+'</pre>';
+    }else if(name==='run_code'){
+      html+='<div class="kv">将在本机以 Node.js 运行以下代码</div><pre>'+esc(String(args.code||'').slice(0,1200))+'</pre>';
+    }else if(name==='run_command'){
+      html+='<div class="kv">将在本机执行以下 shell 命令</div><pre>'+esc(String(args.command||'').slice(0,600))+'</pre>';
+    }
+    body.innerHTML=html;
+    $('permWrap').hidden=false;
+    const done=v=>{ $('permWrap').hidden=true;
+      $('permDeny').onclick=$('permOnce').onclick=$('permAlways').onclick=null; resolve(v); };
+    $('permDeny').onclick=()=>done(false);
+    $('permOnce').onclick=()=>done(true);
+    $('permAlways').onclick=()=>{ sessionAllowed.add(name); done(true); };
+  });
+}
+
+/* 无代理时的浏览器沙箱执行（无 Node/fs API） */
+function runInWorker(code, timeout){
+  return new Promise(resolve=>{
+    const src='const logs=[];function fmt(x){if(typeof x==="string")return x;try{return JSON.stringify(x)}catch(e){return String(x)}}'
+      +'console.log=(...a)=>logs.push(a.map(fmt).join(" "));console.error=(...a)=>logs.push("[err] "+a.map(fmt).join(" "));'
+      +'try{ (function(){ '+code+'\n })(); postMessage({ok:true,logs}); }'
+      +'catch(e){ postMessage({ok:false,logs,error:String(e&&e.message||e)}); }';
+    let w, timer, settled=false;
+    const finish=r=>{ if(settled)return; settled=true; clearTimeout(timer); try{ w&&w.terminate(); }catch(e){} resolve(r); };
+    try{
+      w=new Worker(URL.createObjectURL(new Blob([src],{type:'text/javascript'})));
+      timer=setTimeout(()=>finish('（执行超时 '+Math.round(timeout/1000)+'s，已终止）'), timeout);
+      w.onmessage=e=>{ const d=e.data||{};
+        finish('（浏览器沙箱执行，无 Node/fs API）\nstdout:\n'+(d.logs&&d.logs.join('\n')||'(无)')+(d.ok?'':'\n错误: '+(d.error||'未知'))); };
+      w.onerror=e=>{ finish('错误: '+String(e.message||e)); };
+      w.postMessage('go');
+    }catch(err){ finish('浏览器沙箱执行失败: '+String(err&&err.message||err)); }
+  });
+}
+
+async function execTool(name, args, signal){
+  if(!(await gateTool(name,args))) return '用户拒绝了本次执行';
+  if(name==='calculator') return String(calcEval(args.expression||''));
+  if(name==='web_search'){
+    const j=await proxyGet('/api/search?q='+encodeURIComponent(String(args.query||'').slice(0,300)), signal);
+    if(!j.results || !j.results.length) return '搜索无结果';
+    return '搜索引擎: '+j.engine+'\n'+j.results.map((r,i)=>
+      (i+1)+'. '+r.title+(r.source?('（来源: '+r.source+'）'):'')+'\n   链接: '+r.url+(r.snippet?('\n   摘要: '+r.snippet):'')
+    ).join('\n');
+  }
+  if(name==='web_fetch'){
+    const j=await proxyGet('/api/fetch?url='+encodeURIComponent(args.url||''), signal);
+    return (j.title?('标题: '+j.title+'\n\n'):'')+String(j.text||'').slice(0,16000);
+  }
+  if(name==='run_code'){
+    const body={code:String(args.code||''), timeoutMs:+args.timeoutMs||30000};
+    try{
+      const j=await proxyPost('/api/exec', body, signal);
+      return (j.ok?'':'[退出码 '+(j.code??'?')+(j.timeout?'（超时）':'')+'] ')
+        +'stdout:\n'+(j.stdout||'(无)')+'\nstderr:\n'+(j.stderr||'(无)')+'\n耗时 '+j.durationMs+'ms';
+    }catch(e){
+      return await runInWorker(body.code, Math.min(30000, body.timeoutMs));
+    }
+  }
+  if(name==='write_file'){
+    const j=await proxyPost('/api/fs/write',{dir:cfg.workspaceDir, path:String(args.path||''), content:String(args.content??'')}, signal);
+    return '已写入 '+j.bytes+' 字节 → '+j.path;
+  }
+  if(name==='read_file'){
+    const j=await proxyGet('/api/fs/read?dir='+encodeURIComponent(cfg.workspaceDir)+'&path='+encodeURIComponent(args.path||''), signal);
+    return '路径: '+j.path+'（'+j.bytes+' 字节'+(j.truncated?'，已截断':'')+'）\n\n'+j.content;
+  }
+  if(name==='list_files'){
+    const j=await proxyGet('/api/fs/list?dir='+encodeURIComponent(cfg.workspaceDir)+'&path='+encodeURIComponent(args.path||'.'), signal);
+    return '目录: '+j.path+'\n'+(j.entries.map(e=>(e.dir?'[目录] ':'[文件] ')+e.name+(e.size?('（'+e.size+' B）'):'')).join('\n')||'（空）');
+  }
+  if(name==='run_command'){
+    const j=await proxyPost('/api/cmd',{command:String(args.command||''), timeoutMs:+args.timeoutMs||30000}, signal);
+    return (j.ok?'':'[退出码 '+(j.code??'?')+'] ')+'stdout:\n'+(j.stdout||'(无)')+'\nstderr:\n'+(j.stderr||'(无)');
+  }
+  const pt=pluginTools.find(t=>t.name===name);
+  if(pt){
+    try{ return String(await pt.execute(args||{}, {cfg, copyText, toast })); }
+    catch(e){ return '插件工具执行失败：'+String(e&&e.message||e); }
+  }
+  return '未知工具: '+name;
+}
+
+/* 工具循环：非流式，轮数上限可在设置中调整（默认 25，最高 120）；轮内超预算时在回合间隙自动压缩 */
+async function toolsLoop(messages, onTrace, signal){
+  const maxRounds=Math.max(1, Math.min(120, parseInt(cfg.maxToolRounds,10)||25));
+  const budget=Math.max(2000, +cfg.contextBudget||12000);
+  const work=sanitizeToolPairs(messages.slice());
+  for(let round=0; round<maxRounds; round++){
+    compressWork(work, budget);   // 回合间隙压缩，不打断进行中的调用
+    const res=await apiRaw(work,{stream:false,tools:true,signal});
+    const j=await res.json();
+    const msg=(j.choices&&j.choices[0]&&j.choices[0].message)||{};
+    if(!msg.tool_calls || !msg.tool_calls.length) return msg.content||'';
+    work.push({role:'assistant', content:msg.content||'', tool_calls:msg.tool_calls});
+    for(const tc of msg.tool_calls){
+      let args={};
+      try{ args=JSON.parse((tc.function&&tc.function.arguments)||'{}'); }catch(e){}
+      const name=(tc.function&&tc.function.name)||'unknown';
+      onTrace(name,args,round+1,maxRounds);
+      let out;
+      try{ out=await execTool(name,args,signal); }
+      catch(err){ out='工具执行失败：'+String(err&&err.message||err); }
+      work.push({role:'tool', tool_call_id:tc.id, content:String(out).slice(0,20000)});
+    }
+  }
+  return '（已达本次工具调用轮数上限 '+maxRounds+' 轮，已停止。基于以上信息继续回答，或在设置中调高"工具调用轮数上限"后让我接着做。）';
+}
+
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+async function demoStream(onDelta, signal, onTrace){
+  if(onTrace){
+    onTrace('web_search',{query:'锑 出口管制 最新政策 库存'});
+    await sleep(900);
+    if(signal.aborted) throw new DOMException('aborted','AbortError');
+    onTrace('web_fetch',{url:'http://www.mofcom.gov.cn/（演示：跳过真实请求）'});
+    await sleep(600);
+    if(signal.aborted) throw new DOMException('aborted','AbortError');
+    onTrace('calculator',{expression:'0.01/0.12*100'});
+    await sleep(700);
+    if(signal.aborted) throw new DOMException('aborted','AbortError');
+  }
+  for(let i=0;i<DEMO_ANSWER.length;i+=3){
+    if(signal.aborted) throw new DOMException('aborted','AbortError');
+    onDelta(DEMO_ANSWER.slice(i,i+3));
+    await sleep(12);
+  }
+}
+
+/* ================= 灵动岛 ================= */
+const island=$('dynIsland'), islText=$('islText'), islTime=$('islTime'), islDetail=$('islDetail');
+let islTimer=null, islStart=0;
+const islandTrace=[];
+function islandBegin(text){
+  island.classList.add('work'); island.classList.remove('done');
+  islStart=Date.now(); clearInterval(islTimer);
+  islTimer=setInterval(()=>{ islTime.textContent=Math.round((Date.now()-islStart)/1000)+'s'; },500);
+  islTime.textContent='0s'; islText.textContent=text;
+}
+function islandWork(tool,args,round,max){
+  const a=args||{};
+  const desc = tool==='web_search'?('🔍 搜索：'+String(a.query||''))
+    : tool==='web_fetch'?('📄 读取网页')
+    : tool==='calculator'?('🧮 计算：'+String(a.expression||''))
+    : tool==='write_file'?('💾 写入 '+(a.path||''))
+    : tool==='read_file'?('📂 读取 '+(a.path||''))
+    : tool==='list_files'?'📂 列目录'
+    : tool==='run_code'?'⚙ 运行程序'
+    : tool==='run_command'?'⌨ 执行命令'
+    : ('🔧 '+tool);
+  if(!island.classList.contains('work')) islandBegin(desc);
+  else islText.textContent=desc+(round?(' · 第 '+round+'/'+max+' 轮'):'');
+  islandTrace.push(desc); if(islandTrace.length>4) islandTrace.shift();
+  islDetail.innerHTML=islandTrace.map(t=>'<div>'+esc(t)+'</div>').join('');
+}
+function islandEnd(text){
+  clearInterval(islTimer); islTime.textContent='';
+  island.classList.remove('work'); island.classList.add('done');
+  islText.textContent=text||'完成';
+  setTimeout(()=>{
+    island.classList.remove('done','expand');
+    islText.textContent='待命'; islandTrace.length=0; islDetail.innerHTML='';
+  },2200);
+}
+island.addEventListener('click', ()=>island.classList.toggle('expand'));
+
+/* ================= 右键菜单（复制/粘贴） ================= */
+const ctxMenu=$('ctxMenu');
+function hideCtx(){ ctxMenu.hidden=true; }
+document.addEventListener('contextmenu', e=>{
+  if(e.target.closest('#ctxMenu')) return;
+  e.preventDefault();
+  const sel=String(window.getSelection()||'').trim();
+  const msgEl=e.target.closest('.msg');
+  const field=e.target.closest('input[type=text],input[type=password],input[type=number],textarea');
+  const items=[];
+  if(sel) items.push(['📋 复制所选文本', ()=>copyText(String(window.getSelection()))]);
+  if(msgEl){
+    const raw=msgEl._rawSrc;
+    items.push(['📜 复制该条消息', ()=>copyText(raw!==undefined?raw:(msgEl.querySelector('.md')||{innerText:''}).innerText)]);
+  }
+  if(field){
+    if(field.value) items.push(['📝 复制输入框内容', ()=>copyText(field.value)]);
+    items.push(['📥 粘贴到输入框', ()=>pasteInto(field)]);
+    if(field.value) items.push(['🔲 全选输入框', ()=>{ field.focus(); field.select(); }]);
+  }else{
+    items.push(['📥 粘贴到输入框', ()=>pasteInto(ta)]);
+  }
+  ctxMenu.innerHTML=items.map(([label],i)=>'<div class="ctx-item" data-i="'+i+'">'+esc(label)+'</div>').join('<div class="ctx-sep"></div>');
+  ctxMenu.querySelectorAll('.ctx-item').forEach(el=>{
+    el.addEventListener('click', ()=>{ const it=items[+el.dataset.i]; hideCtx(); it[1](); });
+  });
+  ctxMenu.hidden=false;
+  const w=ctxMenu.offsetWidth, h=ctxMenu.offsetHeight;
+  ctxMenu.style.left=Math.min(e.clientX, window.innerWidth-w-10)+'px';
+  ctxMenu.style.top=Math.min(e.clientY, window.innerHeight-h-10)+'px';
+});
+document.addEventListener('click', e=>{ if(!e.target.closest('#ctxMenu')) hideCtx(); });
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') hideCtx(); });
+chatScroll.addEventListener('scroll', hideCtx, {passive:true});
+
+/* ================= 发送主流程 ================= */
+let streaming=false, aborter=null;
+
+function morphLoading(){ btnSend.classList.remove('success'); btnSend.classList.add('loading'); }
+function morphSuccess(){
+  btnSend.classList.remove('loading'); btnSend.classList.add('success');
+  setTimeout(()=>btnSend.classList.remove('success'), 750);   // 停顿后恢复原状
+}
+
+async function handleSend(){
+  if(streaming) return;
+  const text=ta.value.trim();
+  if(!text) return;
+  ta.value=''; autosize();
+  addMessage('user', text);
+  msgs.push({role:'user', content:text, t:Date.now()}); saveMsgs();
+  updateWelcome();
+
+  streaming=true; aborter=new AbortController();
+  btnStop.hidden=false; morphLoading();
+  islandTrace.length=0;
+  islandBegin(effDemo()?'演示生成中':(cfg.tools?'思考中':'生成中'));
+  let ended=null;
+  const tag=effDemo()?'演示样例':cfg.model;
+  const handle=addMessage('assistant','', tag);
+  let acc='', last=0;
+  const onDelta=d=>{
+    acc+=d;
+    const now=performance.now();
+    if(now-last>60){ last=now; handle.render(acc,true); stickBottom(false); }
+  };
+  const onTrace=(n,a,r,m)=>{ handle.addTrace(n,a); islandWork(n,a,r,m); };
+  try{
+    if(effDemo()){
+      await demoStream(onDelta, aborter.signal, onTrace);
+    }else if(cfg.tools){
+      handle.render('', true);
+      acc=await toolsLoop(buildMessages(), onTrace, aborter.signal);
+    }else{
+      await callAPI(buildMessages(), onDelta, aborter.signal);
+    }
+    handle.render(acc,false); stickBottom(false);
+    if(acc.trim()){
+      msgs.push({role:'assistant', content:acc, t:Date.now()}); saveMsgs();
+      morphSuccess();
+    }else{
+      handle.render('> （返回内容为空）', false);
+    }
+    ended='完成';
+  }catch(err){
+    ended='出错';
+    if(err && (err.name==='AbortError' || String(err.message||'').includes('aborted'))){
+      ended='已停止';
+      acc+='\n\n> （已停止生成）';
+      handle.render(acc,false);
+      if(acc.trim()){ msgs.push({role:'assistant', content:acc, t:Date.now()}); saveMsgs(); }
+    }else{
+      const msg=String(err && err.message || err);
+      const hint=/Failed to fetch|NetworkError|Load failed/i.test(msg)
+        ? '常见原因：网络不通、该接口不允许浏览器跨域（CORS）、或 Base URL 不正确。可尝试用本地静态服务打开本页（见 README），或改用演示模式。'
+        : '常见原因：API Key 无效或欠费、模型名不存在、Base URL 不正确。';
+      handle.bubble.classList.add('err');
+      handle.render('**⚠ 请求失败**\n\n`'+msg.replace(/`/g,'?')+'`\n\n'+hint, false);
+    }
+  }finally{
+    streaming=false; aborter=null; btnStop.hidden=true;
+    if(btnSend.classList.contains('loading')) btnSend.classList.remove('loading');
+    islandEnd(ended);
+  }
+}
+
+/* 代码块复制（事件委托，动态消息也可用） */
+messagesEl.addEventListener('click', e=>{
+  const btn=e.target.closest('.codecopy');
+  if(!btn) return;
+  const code=btn.parentElement.querySelector('pre code');
+  copyText(code?code.textContent:'').then(ok=>{
+    if(!ok){ toast('复制失败——请手动选择代码复制'); return; }
+    btn.textContent='已复制 ✓';
+    setTimeout(()=>{ btn.textContent='复制代码'; },1500);
+  });
+});
+
+/* ================= 插件系统 ================= */
+let plugins=[];
+try{ plugins=JSON.parse(localStorage.getItem(LS+'plugins')||'[]'); if(!Array.isArray(plugins)) plugins=[]; }catch(e){ plugins=[]; }
+const savePlugins=()=>localStorage.setItem(LS+'plugins', JSON.stringify(plugins));
+let pluginTools=[];
+
+function validatePluginDef(def){
+  if(!def || typeof def!=='object' || !Array.isArray(def.tools) || !def.tools.length)
+    throw new Error('插件格式错误：需要 registerPlugin({name, tools:[…]})');
+  for(const t of def.tools){
+    if(!/^[a-zA-Z0-9_-]{1,64}$/.test(t.name||'')) throw new Error('工具名不合法（限字母数字_-，≤64字符）: '+(t.name||''));
+    if(typeof t.execute!=='function') throw new Error(t.name+' 缺少 execute 函数');
+    if(!t.description) throw new Error(t.name+' 缺少 description');
+  }
+  return def;
+}
+function activatePlugins(){
+  pluginTools=[];
+  for(const p of plugins){
+    p.error='';
+    if(!p.enabled) continue;
+    try{
+      let captured=null;
+      const reg=d=>{ captured=d; };
+      new Function('registerPlugin', '"use strict";\n'+p.code)(reg);
+      const def=validatePluginDef(captured);
+      for(const t of def.tools) pluginTools.push({...t, plugin:def.name});
+      p.name=def.name; p.version=def.version||''; p.toolNames=def.tools.map(t=>t.name);
+    }catch(e){ p.error=String(e.message||e).slice(0,120); }
+  }
+  savePlugins();
+}
+function addPlugin(code){
+  try{
+    let captured=null;
+    const reg=d=>{ captured=d; };
+    new Function('registerPlugin', '"use strict";\n'+code)(reg);
+    const def=validatePluginDef(captured);
+    const builtin=FUNCTION_TOOLS.map(t=>t.function.name);
+    for(const t of def.tools){
+      if(builtin.includes(t.name)) throw new Error('工具名与内置冲突: '+t.name);
+      if(pluginTools.some(x=>x.name===t.name)) throw new Error('工具名与已启用插件重复: '+t.name);
+    }
+    plugins.push({code, enabled:true});
+    savePlugins(); activatePlugins(); renderPlugins();
+    toast('插件已导入：'+(def.name||'(未命名)'));
+    return true;
+  }catch(e){
+    toast('导入失败：'+String(e.message||e).slice(0,90));
+    return false;
+  }
+}
+function renderPlugins(){
+  const box=$('pluginList');
+  if(!plugins.length){
+    box.innerHTML='<p class="hint" style="margin:6px 0 0">尚未导入插件。插件是一个 JS 文件，调用 registerPlugin({name, version, tools:[{name, description, parameters, safe, execute}]})；safe:true 表示只读工具（确认模式下免弹窗），execute(args) 返回字符串作为工具结果。</p>';
+    return;
+  }
+  box.innerHTML=plugins.map((p,i)=>
+    '<div class="plugin-row" data-i="'+i+'">'
+    +'<div style="flex:1;min-width:0"><b>'+esc(p.name||'(未命名)')+'</b> <span class="ver">'+esc(p.version||'')+'</span>'
+    +'<div class="hint" style="margin:2px 0 0">工具: '+esc((p.toolNames||[]).join(', ')||'-')
+    +(p.error?(' · <span style="color:#ff8f9f">'+esc(p.error)+'</span>'):'')+'</div></div>'
+    +'<div class="jelly pjelly" data-i="'+i+'" title="启用/停用"><div class="track"><div class="knob"></div></div></div>'
+    +'<button class="icon-btn pdel" data-i="'+i+'" title="删除">🗑</button>'
+    +'</div>').join('');
+  box.querySelectorAll('.pjelly').forEach(j=>
+    makeJelly(j, plugins[+j.dataset.i].enabled, v=>{ plugins[+j.dataset.i].enabled=v; savePlugins(); activatePlugins(); }));
+  box.querySelectorAll('.pdel').forEach(b=>b.addEventListener('click', ()=>{
+    if(confirm('删除该插件？')){
+      plugins.splice(+b.dataset.i,1); savePlugins(); activatePlugins(); renderPlugins();
+    }
+  }));
+}
+$('btnPluginFile').addEventListener('click', ()=>$('pluginFile').click());
+$('pluginFile').addEventListener('change', async e=>{
+  for(const f of e.target.files){ try{ await addPlugin(await f.text()); }catch(err){ toast('读取失败：'+String(err.message||err)); } }
+  e.target.value='';
+});
+$('btnPluginSample').addEventListener('click', ()=>addPlugin(SAMPLE_PLUGIN));
+$('btnPluginPaste').addEventListener('click', ()=>{ const c=$('pluginCode').value.trim(); if(!c){ toast('请先粘贴插件代码'); return; } if(addPlugin(c)) $('pluginCode').value=''; });
+
+const SAMPLE_PLUGIN=`registerPlugin({
+  name: '时间与随机',
+  version: '1.0',
+  tools: [{
+    name: 'current_time',
+    description: '获取当前本地日期与时间（模型自身没有时钟，凡需要知道"现在是什么时间"都必须调用本工具）',
+    parameters: { type: 'object', properties: {} },
+    safe: true,
+    execute: async () => new Date().toLocaleString('zh-CN', { hour12: false })
+  }, {
+    name: 'random_number',
+    description: '生成一个随机整数，范围 [min, max]（含端点）',
+    parameters: { type: 'object', properties: { min: { type: 'number' }, max: { type: 'number' } }, required: ['min', 'max'] },
+    safe: true,
+    execute: async (a) => '随机数: ' + (Math.floor(Math.random() * (a.max - a.min + 1)) + (+a.min))
+  }]
+});`;
+
+/* ================= 设置面板 ================= */
+const jellyThink=makeJelly($('jellyThink'), cfg.think, v=>{ cfg.think=v; saveCfg(); });
+const jellyTools=makeJelly($('jellyTools'), cfg.tools, v=>{ cfg.tools=v; saveCfg(); });
+const jellyStream=makeJelly($('jellyStream'), cfg.stream, v=>{ cfg.stream=v; saveCfg(); });
+const jellyDemo=makeJelly($('jellyDemo'), cfg.demo, v=>{ cfg.demo=v; saveCfg(); updateBadge(); });
+const jellyCompat=makeJelly($('jellyCompat'), cfg.legacyRender, v=>{
+  cfg.legacyRender=v; saveCfg();
+  document.documentElement.classList.toggle('no-blur', !!v);
+  toast(v?'已切换兼容渲染：关闭模糊效果':'已恢复标准玻璃效果');
+});
+
+function updateBadge(){
+  if(effDemo()){ modeBadge.textContent='演示模式'; modeBadge.classList.remove('live'); }
+  else{ modeBadge.textContent='实时接口 · '+cfg.model; modeBadge.classList.add('live'); }
+}
+function fillSettings(){
+  $('fProvider').value=cfg.provider; $('fBaseUrl').value=cfg.baseUrl;
+  $('fKey').value=cfg.apiKey; $('fModel').value=cfg.model;
+  $('fTemp').value=cfg.temp; $('tempVal').textContent=cfg.temp;
+  $('fRounds').value=Math.max(3,Math.min(120,parseInt(cfg.maxToolRounds,10)||25));
+  $('fBudget').value=Math.max(2000,Math.min(200000,parseInt(cfg.contextBudget,10)||12000));
+  $('fProxy').value=cfg.proxyUrl||'';
+  $('provHint').textContent=(PROVIDERS[cfg.provider]||{}).hint||'';
+  $('fPerm').value=cfg.permissionMode||'confirm';
+  $('fWorkspace').value=cfg.workspaceDir||'workspace';
+  jellyStream.set(cfg.stream); jellyDemo.set(cfg.demo); jellyCompat.set(!!cfg.legacyRender);
+}
+$('fProvider').addEventListener('change', e=>{
+  const p=PROVIDERS[e.target.value];
+  if(p){ $('fBaseUrl').value=p.baseUrl; $('fModel').value=p.model; $('provHint').textContent=p.hint||''; }
+});
+$('fTemp').addEventListener('input', e=>{ $('tempVal').textContent=e.target.value; });
+$('fRounds').addEventListener('change', e=>{
+  let v=parseInt(e.target.value,10); if(!isNaN(v)) e.target.value=Math.max(3,Math.min(120,v));
+});
+$('fBudget').addEventListener('change', e=>{
+  let v=parseInt(e.target.value,10); if(!isNaN(v)) e.target.value=Math.max(2000,Math.min(200000,v));
+});
+$('btnEye').addEventListener('click', ()=>{
+  const k=$('fKey'); k.type = k.type==='password' ? 'text' : 'password';
+});
+$('btnSave').addEventListener('click', ()=>{
+  cfg.provider=$('fProvider').value;
+  cfg.baseUrl=$('fBaseUrl').value.trim();
+  cfg.apiKey=$('fKey').value.trim();
+  cfg.model=$('fModel').value.trim();
+  cfg.temp=+$('fTemp').value;
+  cfg.maxToolRounds=Math.max(3,Math.min(120,parseInt($('fRounds').value,10)||25));
+  cfg.contextBudget=Math.max(2000,Math.min(200000,parseInt($('fBudget').value,10)||12000));
+  cfg.proxyUrl=$('fProxy').value.trim()||'http://127.0.0.1:8210';
+  cfg.permissionMode=$('fPerm').value;
+  cfg.workspaceDir=$('fWorkspace').value.trim()||'workspace';
+  sessionAllowed.clear();
+  saveCfg(); updateBadge(); toast('设置已保存（仅存本机）');
+  if(cfg.apiKey && cfg.demo) toast('已保存 Key。演示模式仍开启，如需真实分析请在输入框关闭演示模式');
+  closeDrawers();
+});
+$('btnProxyTest').addEventListener('click', async ()=>{
+  const st=$('proxyStatus'); st.textContent='测试中…';
+  try{
+    const base=$('fProxy').value.trim().replace(/\/+$/,'');
+    const r=await fetch(base+'/api/health',{signal:AbortSignal.timeout(2500)});
+    const j=await r.json();
+    st.textContent='✓ 可用 · 引擎: '+((j.engines||[]).join('/'));
+  }catch(e){ st.textContent='✗ 无法连接——请先运行 node agent-proxy.js'; }
+});
+
+/* ===== 目录选择器 ===== */
+let dirPickPath='';
+function joinPath(base, name){
+  const sep = base.includes('\\') ? '\\' : '/';
+  return /[\\/]$/.test(base) ? base + name : base + sep + name;
+}
+function parentPath(p){
+  if(p==='' || /^[a-zA-Z]:\\?$/.test(p) || p==='/') return '';
+  const s=p.replace(/[\\/]+$/,'');
+  const i=Math.max(s.lastIndexOf('\\'), s.lastIndexOf('/'));
+  if(i<=0) return s.slice(0,1)==='/' ? '/' : s;
+  let parent=s.slice(0, i+1);
+  if(/^[a-zA-Z]:$/.test(parent)) parent+='\\';
+  return parent;
+}
+function dirRender(items){
+  const list=$('dirList');
+  list.innerHTML=items.map(it=>'<div class="dir-item">'+esc(it.label)+'</div>').join('');
+  list.querySelectorAll('.dir-item').forEach((el,i)=>{
+    el.addEventListener('click', ()=>dirGo(items[i].path));
+  });
+}
+async function dirGo(p){
+  try{
+    if(p===''){ await dirShowDrives(); return; }
+    const j=await proxyGet('/api/fs/browse?path='+encodeURIComponent(p));
+    dirPickPath=j.path||p;
+    $('dirPath').value=dirPickPath;
+    $('dirChoose').disabled=false;
+    dirRender(j.dirs.map(d=>({label:'📁 '+d, path:joinPath(dirPickPath, d)})));
+  }catch(e){
+    toast('无法进入该目录：'+String(e.message||e).slice(0,60));
+  }
+}
+async function dirShowDrives(){
+  dirPickPath='';
+  $('dirPath').value='（此电脑 · 请选择盘符）';
+  $('dirChoose').disabled=true;
+  try{
+    const j=await proxyGet('/api/fs/drives');
+    dirRender(j.drives.map(d=>({label:'💽 磁盘 '+d, path:d})));
+  }catch(e){ toast('无法读取磁盘列表（代理未启动？）'); }
+}
+function dirClose(){ $('dirWrap').hidden=true; }
+$('btnPickDir').addEventListener('click', ()=>{
+  const abs=/^[a-zA-Z]:[\\/]/.test(cfg.workspaceDir||'') || String(cfg.workspaceDir||'').startsWith('/');
+  $('dirWrap').hidden=false;
+  dirGo(abs?cfg.workspaceDir:'');
+});
+$('dirClose').addEventListener('click', dirClose);
+$('dirWrap').querySelector('[data-close-dir]').addEventListener('click', dirClose);
+$('dirUp').addEventListener('click', ()=>dirGo(parentPath(dirPickPath)));
+$('dirChoose').addEventListener('click', ()=>{
+  if(!dirPickPath) return;
+  $('fWorkspace').value=dirPickPath;
+  dirClose();
+  toast('已选择目录——记得点"保存"生效');
+});
+$('btnWipe').addEventListener('click', ()=>{
+  if(!confirm('清空本地保存的配置与对话记录？')) return;
+  localStorage.removeItem(LS+'cfg'); localStorage.removeItem(LS+'msgs');
+  cfg={...defCfg}; msgs=[];
+  fillSettings(); renderAll(); updateBadge(); toast('已清空'); closeDrawers();
+});
+
+/* ================= 顶栏与输入区 ================= */
+function renderAll(){
+  messagesEl.innerHTML='';
+  for(const m of msgs) addMessage(m.role, m.content, m.role==='assistant' ? (effDemo()?'演示样例':cfg.model) : undefined);
+  updateWelcome();
+}
+function newChat(){
+  if(msgs.length && !confirm('清空当前对话？')) return;
+  msgs=[]; saveMsgs(); renderAll();
+}
+function exportMd(){
+  if(!msgs.length){ toast('暂无可导出的对话'); return; }
+  const parts=msgs.map(m=>(m.role==='user'?'## 问\n\n':'## Critical Minerals Desk Agent\n\n')+m.content);
+  const blob=new Blob([parts.join('\n\n---\n\n')],{type:'text/markdown;charset=utf-8'});
+  const a=document.createElement('a');
+  const d=new Date(); const ds=d.getFullYear()+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0');
+  a.href=URL.createObjectURL(blob);
+  a.download='rare-metal-analysis-'+ds+'.md';
+  a.click(); URL.revokeObjectURL(a.href);
+}
+$('btnNew').addEventListener('click', newChat);
+$('btnExport').addEventListener('click', exportMd);
+$('btnSettings').addEventListener('click', ()=>{ fillSettings(); openDrawer(drawerSettings); });
+$('btnCloseSettings').addEventListener('click', closeDrawers);
+$('btnPrompt').addEventListener('click', ()=>{ openDrawer(drawerPrompt); });
+$('btnClosePrompt').addEventListener('click', closeDrawers);
+$('promptPre').textContent=SYSTEM_PROMPT+'\n\n'+runtimeNote();
+
+btnSend.addEventListener('click', handleSend);
+btnStop.addEventListener('click', ()=>{ if(aborter) aborter.abort(); });
+$('btnPaste').addEventListener('click', pasteText);
+function autosize(){ ta.style.height='auto'; ta.style.height=Math.min(ta.scrollHeight,160)+'px'; }
+ta.addEventListener('input', autosize);
+ta.addEventListener('keydown', e=>{
+  if(e.key==='Enter' && !e.shiftKey && !e.isComposing){ e.preventDefault(); handleSend(); }
+});
+document.querySelectorAll('.chip').forEach(ch=>{
+  ch.addEventListener('click', ()=>{ ta.value=ch.dataset.q; autosize(); handleSend(); });
+});
+
+/* ================= 启动 ================= */
+window.__stats={turnFolds:0, workFolds:0};
+if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
+  navigator.serviceWorker.register('sw.js').catch(()=>{});
+}
+document.documentElement.classList.toggle('no-blur', !!cfg.legacyRender);
+activatePlugins();
+renderPlugins();
+$('promptPre').textContent=SYSTEM_PROMPT+'\n\n'+runtimeNote();
+renderAll();
+updateBadge();
+autosize();
+if(!cfg.apiKey && !localStorage.getItem(LS+'seen')){
+  localStorage.setItem(LS+'seen','1');
+  setTimeout(()=>toast('未配置 API Key，当前为演示模式；点击右上角 ⚙ 配置你的大模型接口'), 600);
+}
+</script>
+</body>
+</html>

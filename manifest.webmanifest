@@ -1,0 +1,16 @@
+{
+  "name": "Critical Minerals Desk · 稀有金属价格预估与策略 Agent",
+  "short_name": "稀有金属Agent",
+  "description": "稀有金属/关键矿产的方向性分析、采购时机评估、交易策略框架生成",
+  "lang": "zh-CN",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0f0c29",
+  "theme_color": "#0f0c29",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
